@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}{{ node.title }} · orgtd{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('notes.index') }}">← 所有筆記</a></p>
+
+<form method="post" action="{{ url_for('notes.save', node_id=node.id) }}" class="note-form">
+  <input type="text" name="title" value="{{ node.title }}" class="note-title-input">
+  <textarea name="body" rows="16" placeholder="寫點什麼…">{{ node.body or "" }}</textarea>
+  <button type="submit">儲存</button>
+</form>
+
+<form method="post" action="{{ url_for('notes.archive', node_id=node.id) }}" class="discard-form">
+  <button type="submit">封存這篇筆記</button>
+</form>
+{% endblock %}

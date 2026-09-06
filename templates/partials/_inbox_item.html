@@ -1,0 +1,22 @@
+{% macro clarify_card(item) %}
+<div class="card inbox-item">
+  <p class="inbox-title">{{ item.title }}</p>
+  <form method="post" action="{{ url_for('inbox.clarify', node_id=item.id) }}" class="clarify-form">
+    <label>
+      分類
+      <select name="kind">
+        <option value="task">任務</option>
+        <option value="project">專案</option>
+        <option value="note">筆記</option>
+        <option value="someday">將來也許</option>
+      </select>
+    </label>
+    <label>排程日 <input type="date" name="scheduled_at"></label>
+    <label>截止日 <input type="date" name="deadline_at"></label>
+    <button type="submit">確認分類</button>
+  </form>
+  <form method="post" action="{{ url_for('inbox.discard', node_id=item.id) }}" class="discard-form">
+    <button type="submit">丟棄</button>
+  </form>
+</div>
+{% endmacro %}

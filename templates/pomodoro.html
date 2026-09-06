@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}番茄鐘 · {{ node.title }} · orgtd{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('pomodoro.index') }}">← 選別的任務</a></p>
+<h1>{{ node.title }}</h1>
+<p class="meta">今天已完成 <span id="today-count">{{ today_count }}</span> 顆番茄。</p>
+
+<div
+  id="pomodoro"
+  class="pomodoro-box"
+  data-node-id="{{ node.id }}"
+  data-focus-minutes="{{ settings.focus }}"
+  data-short-minutes="{{ settings.short }}"
+  data-long-minutes="{{ settings.long }}"
+  data-long-every="{{ settings.long_every }}"
+>
+  <p id="phase-label" class="phase-label">專注</p>
+  <p id="timer-display" class="timer-display">{{ "%02d:00"|format(settings.focus) }}</p>
+  <div class="pomodoro-controls">
+    <button id="start-btn" type="button">開始</button>
+    <button id="abandon-btn" type="button" style="display:none;">放棄</button>
+  </div>
+  <p id="notify-hint" class="meta"></p>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='pomodoro.js') }}"></script>{% endblock %}

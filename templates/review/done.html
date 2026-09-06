@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}週回顧完成 · orgtd{% endblock %}
+{% block content %}
+<div class="error-box">
+  <h1>✅ 本週回顧完成</h1>
+  <p class="meta">{{ review.week_start.strftime('%Y-%m-%d') }} 這一週 · {{ done_steps }} / {{ steps|length }} 步完成</p>
+  {% if review.reflection %}
+  <p style="text-align:left; max-width: 480px; margin: 1rem auto;">{{ review.reflection }}</p>
+  {% endif %}
+  <p><a href="{{ url_for('agenda.index') }}">回到今日視圖</a></p>
+</div>
+{% endblock %}

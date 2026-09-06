@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% from "partials/_inbox_item.html" import clarify_card %}
+{% block title %}收集箱 · orgtd{% endblock %}
+{% block content %}
+<h1>收集箱</h1>
+
+<form method="post" action="{{ url_for('inbox.capture') }}" class="capture-form">
+  <input type="text" name="title" placeholder="隨手記下任何想法…" autofocus required>
+  <button type="submit">捕捉</button>
+</form>
+
+{% if items %}
+<div class="inbox-list">
+  {% for item in items %}{{ clarify_card(item) }}{% endfor %}
+</div>
+{% else %}
+<p class="meta">收集箱是空的。</p>
+{% endif %}
+{% endblock %}

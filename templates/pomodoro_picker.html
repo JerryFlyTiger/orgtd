@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}番茄鐘 · orgtd{% endblock %}
+{% block content %}
+<h1>番茄鐘</h1>
+<p class="meta">今天已完成 {{ today_count }} 顆番茄。</p>
+
+<h2>選一個 NEXT 行動開始</h2>
+{% if next_actions %}
+<div class="card-grid">
+  {% for node in next_actions %}
+  <a class="card project-card" href="{{ url_for('pomodoro.index', node=node.id) }}">
+    <p class="task-title">{{ node.title }}</p>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<p class="meta">目前沒有 NEXT 行動可選，先去<a href="{{ url_for('agenda.index') }}">今日視圖</a>或<a href="{{ url_for('inbox.index') }}">收集箱</a>安排一個吧。</p>
+{% endif %}
+{% endblock %}

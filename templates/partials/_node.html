@@ -1,0 +1,34 @@
+{% macro task_card(node) %}
+<div class="card task-card">
+  <p class="task-title">
+    <span class="state-pill state-{{ node.todo_state|lower }}">{{ node.todo_state }}</span>
+    {{ node.title }}
+  </p>
+  {% if node.scheduled_at %}<p class="meta">排程：{{ node.scheduled_at.strftime('%Y-%m-%d') }}</p>{% endif %}
+  {% if node.deadline_at %}<p class="meta">截止：{{ node.deadline_at.strftime('%Y-%m-%d') }}</p>{% endif %}
+  {% if node.remind_at %}
+  <p class="meta">🔔 {{ node.remind_at.strftime('%Y-%m-%d %H:%M') }}{% if node.repeat_rule %}（重複：{{ {"+1d": "每天", "+1w": "每週", "+1m": "每月"}[node.repeat_rule] }}）{% endif %}</p>
+  {% endif %}
+  <div class="task-actions">
+    {% for state in ["NEXT", "WAITING", "DONE"] %}
+      {% if state != node.todo_state %}
+      <form method="post" action="{{ url_for('nodes.set_state', node_id=node.id) }}">
+        <input type="hidden" name="state" value="{{ state }}">
+        <button type="submit">{{ state }}</button>
+      </form>
+      {% endif %}
+    {% endfor %}
+    <a href="{{ url_for('pomodoro.index', node=node.id) }}" class="pomodoro-link">🍅 開始番茄鐘</a>
+  </div>
+  <form method="post" action="{{ url_for('nodes.set_reminder', node_id=node.id) }}" class="remind-form">
+    <input type="datetime-local" name="remind_at" value="{{ node.remind_at.strftime('%Y-%m-%dT%H:%M') if node.remind_at }}">
+    <select name="repeat_rule">
+      <option value="">不重複</option>
+      <option value="+1d" {{ "selected" if node.repeat_rule == "+1d" }}>每天</option>
+      <option value="+1w" {{ "selected" if node.repeat_rule == "+1w" }}>每週</option>
+      <option value="+1m" {{ "selected" if node.repeat_rule == "+1m" }}>每月</option>
+    </select>
+    <button type="submit">設提醒</button>
+  </form>
+</div>
+{% endmacro %}

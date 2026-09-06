@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% from "partials/_inbox_item.html" import clarify_card %}
+{% from "partials/_node.html" import task_card %}
+{% block title %}週回顧 Step {{ n }} · orgtd{% endblock %}
+{% block content %}
+<h1>每週回顧</h1>
+<p class="meta">{{ review.week_start.strftime('%Y-%m-%d') }} 這一週 · 已完成 {{ done_steps }} / {{ steps|length }} 步</p>
+
+<div class="review-progress">
+  <div class="review-progress-bar" style="width: {{ (done_steps / steps|length * 100)|round }}%;"></div>
+</div>
+
+<div class="review-steps-nav">
+  {% for s in steps %}
+  <a href="{{ url_for('review.step', n=loop.index) }}"
+     class="review-step-pill {{ 'active' if loop.index == n }} {{ 'done' if review.checklist.get(s.key) }}">
+    {{ loop.index }}
+  </a>
+  {% endfor %}
+</div>
+
+<h2>{{ n }}. {{ steps[n - 1].title }}</h2>
+
+{% if n == 1 %}
+  {% if inbox_items %}
+  <div class="inbox-list">{% for item in inbox_items %}{{ clarify_card(item) }}{% endfor %}</div>
+  {% else %}
+  <p class="meta">✅ 收集箱已經清空。</p>
+  {% endif %}
+
+{% elif n == 2 %}
+  {% if next_actions %}
+  <div class="card-grid">{% for node in next_actions %}{{ task_card(node) }}{% endfor %}</div>
+  {% else %}
+  <p class="meta">目前沒有 NEXT 行動。</p>
+  {% endif %}
+
+{% elif n == 3 %}
+  {% if waiting_items %}
+  <div class="card-grid">{% for node in waiting_items %}{{ task_card(node) }}{% endfor %}</div>
+  {% else %}
+  <p class="meta">目前沒有等待中的項目。</p>
+  {% endif %}
+
+{% elif n == 4 %}
+  {% if projects_stalled %}
+  <div class="card-grid">
+    {% for project, stalled in projects_stalled %}
+    <a class="card project-card {{ 'stalled' if stalled }}" href="{{ url_for('projects.detail', project_id=project.id) }}">
+      <p class="task-title">{{ project.title }}</p>
+      {% if stalled %}<p class="meta stalled-hint">⚠ 沒有下一步行動</p>{% endif %}
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="meta">目前沒有任何專案。</p>
+  {% endif %}
+
+{% elif n == 5 %}
+  {% if someday_items %}
+  <div class="card-grid">
+    {% for node in someday_items %}
+    <div class="card"><p class="task-title">{{ node.title }}</p></div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="meta">將來也許清單是空的。</p>
+  {% endif %}
+
+{% elif n == 6 %}
+  {% if upcoming %}
+  <div class="card-grid">
+    {% for node in upcoming %}
+    <div class="card">
+      <p class="task-title">{{ node.title }}</p>
+      {% if node.scheduled_at %}<p class="meta">排程：{{ node.scheduled_at.strftime('%Y-%m-%d') }}</p>{% endif %}
+      {% if node.deadline_at %}<p class="meta">截止：{{ node.deadline_at.strftime('%Y-%m-%d') }}</p>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="meta">未來一週沒有排程或截止的項目。</p>
+  {% endif %}
+
+{% elif n == 7 %}
+  {% if pomodoro_stats %}
+  <div class="outline-tree">
+    {% for row in pomodoro_stats %}
+    <div class="outline-row">
+      <span class="outline-title">{{ row.project }}</span>
+      <span class="meta">{{ row.pomodoros }} 顆 · {{ (row.total_seconds / 60)|round|int }} 分鐘</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="meta">這週還沒有完成任何番茄。</p>
+  {% endif %}
+
+{% elif n == 8 %}
+  <form method="post" action="{{ url_for('review.complete_step', n=n) }}" class="note-form">
+    <textarea name="reflection" rows="8" placeholder="這週過得如何？有什麼值得記下的？">{{ review.reflection or "" }}</textarea>
+    <button type="submit">完成本次回顧</button>
+  </form>
+{% endif %}
+
+{% if n < steps|length %}
+<form method="post" action="{{ url_for('review.complete_step', n=n) }}" class="review-nav-form">
+  <button type="submit">標記完成，前往下一步 →</button>
+</form>
+{% endif %}
+{% endblock %}

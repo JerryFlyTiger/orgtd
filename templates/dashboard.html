@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}儀表板 · orgtd{% endblock %}
+{% block content %}
+<h1>儀表板</h1>
+
+<div class="stat-grid">
+  <div class="card stat-tile">
+    <p class="stat-value">{{ streak }}</p>
+    <p class="stat-label">連續天數 🔥</p>
+  </div>
+  <div class="card stat-tile">
+    <p class="stat-value">{{ today_pomodoros }}</p>
+    <p class="stat-label">今日番茄</p>
+  </div>
+  <div class="card stat-tile">
+    <p class="stat-value">{{ week_total_pomodoros }}</p>
+    <p class="stat-label">本週番茄（{{ week_total_minutes }} 分鐘）</p>
+  </div>
+  <div class="card stat-tile">
+    <p class="stat-value">{{ inbox_count }}</p>
+    <p class="stat-label">收集箱未處理</p>
+  </div>
+  <div class="card stat-tile">
+    <p class="stat-value">{{ next_count }}</p>
+    <p class="stat-label">NEXT 行動</p>
+  </div>
+  <div class="card stat-tile">
+    <p class="stat-value">{{ waiting_count }}</p>
+    <p class="stat-label">等待中</p>
+  </div>
+  <div class="card stat-tile">
+    <p class="stat-value">{{ someday_count }}</p>
+    <p class="stat-label">將來也許</p>
+  </div>
+  <div class="card stat-tile {{ 'stat-warn' if stalled_count }}">
+    <p class="stat-value">{{ stalled_count }} / {{ project_count }}</p>
+    <p class="stat-label">卡住的專案</p>
+  </div>
+</div>
+
+<h2>本週時間花在哪些專案</h2>
+{% if week_stats %}
+<div class="outline-tree">
+  {% for row in week_stats %}
+  <div class="outline-row">
+    <span class="outline-title">{{ row.project }}</span>
+    <span class="meta">{{ row.pomodoros }} 顆 · {{ (row.total_seconds / 60)|round|int }} 分鐘</span>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<p class="meta">這週還沒有完成任何番茄。</p>
+{% endif %}
+{% endblock %}

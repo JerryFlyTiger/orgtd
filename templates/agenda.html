@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% from "partials/_node.html" import task_card %}
+{% block title %}今日 · orgtd{% endblock %}
+{% block content %}
+<h1>今日</h1>
+
+<div id="notify-banner" class="notify-banner" style="display:none;">
+  <span>啟用桌面通知才能在頁面開著時收到提醒。</span>
+  <button id="notify-enable" type="button">啟用通知</button>
+</div>
+
+<h2>逾期</h2>
+{% if overdue %}
+<div class="card-grid">{% for node in overdue %}{{ task_card(node) }}{% endfor %}</div>
+{% else %}
+<p class="meta">沒有逾期項目。</p>
+{% endif %}
+
+<h2>今日排程</h2>
+{% if scheduled_today %}
+<div class="card-grid">{% for node in scheduled_today %}{{ task_card(node) }}{% endfor %}</div>
+{% else %}
+<p class="meta">今天沒有排程的任務。</p>
+{% endif %}
+
+<h2>下一步行動（NEXT）</h2>
+{% if next_actions %}
+<div class="card-grid">{% for node in next_actions %}{{ task_card(node) }}{% endfor %}</div>
+{% else %}
+<p class="meta">目前沒有 NEXT 行動。</p>
+{% endif %}
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='reminders.js') }}"></script>{% endblock %}

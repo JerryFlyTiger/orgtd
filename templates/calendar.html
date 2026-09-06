@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}{{ year }}-{{ "%02d"|format(month) }} · orgtd{% endblock %}
+{% block content %}
+<div class="calendar-header">
+  <a href="{{ url_for('calendar.month_view', year=prev_year, month=prev_month) }}">← 上個月</a>
+  <h1>{{ year }} 年 {{ month }} 月</h1>
+  <a href="{{ url_for('calendar.month_view', year=next_year, month=next_month) }}">下個月 →</a>
+</div>
+
+<table class="calendar-grid">
+  <thead>
+    <tr>
+      {% for w in ["一", "二", "三", "四", "五", "六", "日"] %}
+      <th>{{ w }}</th>
+      {% endfor %}
+    </tr>
+  </thead>
+  <tbody>
+    {% for week in weeks %}
+    <tr>
+      {% for day in week %}
+      {% if day == 0 %}
+      <td class="empty"></td>
+      {% else %}
+      <td class="{{ 'today' if today.year == year and today.month == month and today.day == day }}">
+        <div class="day-num">{{ day }}</div>
+        {% for label, node in by_day.get(day, []) %}
+        <div class="day-item">
+          <span class="state-pill">{{ label }}</span>{{ node.title }}
+        </div>
+        {% endfor %}
+      </td>
+      {% endif %}
+      {% endfor %}
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

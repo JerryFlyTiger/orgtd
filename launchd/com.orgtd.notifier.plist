@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.orgtd.notifier</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/jerrychen/My_Projects/orgtd/.venv/bin/python</string>
+        <string>/Users/jerrychen/My_Projects/orgtd/notifier.py</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Users/jerrychen/My_Projects/orgtd</string>
+    <key>StartInterval</key>
+    <integer>60</integer>
+    <key>StandardOutPath</key>
+    <string>/Users/jerrychen/My_Projects/orgtd/launchd/notifier.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/jerrychen/My_Projects/orgtd/launchd/notifier.err.log</string>
+</dict>
+</plist>

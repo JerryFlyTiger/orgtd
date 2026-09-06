@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}orgtd{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="site-title" href="{{ url_for('inbox.index') }}">orgtd</a>
+      <nav class="main-nav">
+        <a href="{{ url_for('inbox.index') }}">
+          收集箱
+          {% if inbox_count %}<span class="badge">{{ inbox_count }}</span>{% endif %}
+        </a>
+        <a href="{{ url_for('agenda.index') }}">
+          今日
+          {% if due_today_count %}<span class="badge">{{ due_today_count }}</span>{% endif %}
+        </a>
+        <a href="{{ url_for('projects.index') }}">專案</a>
+        <a href="{{ url_for('calendar.today') }}">行事曆</a>
+        <a href="{{ url_for('pomodoro.index') }}">番茄鐘</a>
+        <a href="{{ url_for('notes.index') }}">筆記</a>
+        <a href="{{ url_for('review.index') }}">週回顧</a>
+        <a href="{{ url_for('dashboard.index') }}">
+          儀表板
+          {% if weekly_pomodoro_count %}<span class="badge">{{ weekly_pomodoro_count }}</span>{% endif %}
+        </a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="site-footer">orgtd — 本機個人時間與專案管理系統</footer>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

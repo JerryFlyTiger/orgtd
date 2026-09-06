@@ -1,0 +1,643 @@
+/* ===== 基礎 ===== */
+:root {
+  color-scheme: dark;
+
+  --bg: #0d0d0e;
+  --surface: #18181b;
+  --surface-2: #232327;
+  --surface-3: #2e2e33;
+  --border: #34343a;
+  --text: #f4f4f5;
+  --text-muted: #a1a1aa;
+  --text-dim: #71717a;
+
+  --accent: #ef4444;
+  --accent-hover: #dc2626;
+  --accent-soft-bg: #3f1d1d;
+  --accent-soft-fg: #fca5a5;
+
+  --warn-bg: #422006;
+  --warn-fg: #fbbf24;
+  --ok-bg: #052e1a;
+  --ok-fg: #4ade80;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  font-family: -apple-system, "PingFang TC", "Heiti TC", "Microsoft JhengHei", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.7;
+}
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+/* ===== 頁首與主導覽 ===== */
+.site-header {
+  background: var(--surface);
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+}
+.header-inner {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0.8rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+.site-title {
+  color: var(--text);
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+.site-title:hover {
+  text-decoration: none;
+  color: var(--accent-soft-fg);
+}
+.main-nav {
+  display: flex;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+.main-nav a {
+  color: var(--text-muted);
+  padding: 0.35rem 0.8rem;
+  border-radius: 999px;
+}
+.main-nav a:hover {
+  color: #fff;
+  background: var(--surface-3);
+  text-decoration: none;
+}
+.badge {
+  display: inline-block;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 999px;
+  padding: 0.05rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  margin-left: 0.3rem;
+}
+
+/* ===== 主要內容 ===== */
+main {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 3rem;
+}
+main h1 {
+  font-size: 1.5rem;
+}
+
+/* ===== 捕捉表單 ===== */
+.capture-form {
+  display: flex;
+  gap: 0.6rem;
+  margin-bottom: 1.5rem;
+}
+.capture-form input[type="text"] {
+  flex: 1;
+  padding: 0.6rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 1rem;
+  font-family: inherit;
+  background: var(--surface);
+  color: var(--text);
+}
+.capture-form input[type="text"]::placeholder {
+  color: var(--text-dim);
+}
+.capture-form button {
+  padding: 0.6rem 1.2rem;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+.capture-form button:hover {
+  background: var(--accent-hover);
+}
+
+/* ===== 卡片 ===== */
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1rem;
+}
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem 1.2rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+/* ===== 內容元素 ===== */
+.meta {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+main h2 {
+  font-size: 1.1rem;
+  margin: 1.5rem 0 0.75rem;
+}
+
+/* ===== Inbox 釐清 ===== */
+.inbox-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.inbox-item {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+.inbox-title {
+  flex: 1 1 200px;
+  font-weight: 700;
+  margin: 0;
+}
+.clarify-form,
+.discard-form {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.clarify-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.clarify-form select,
+.clarify-form input[type="date"] {
+  padding: 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: inherit;
+  background: var(--surface-2);
+  color: var(--text);
+}
+.clarify-form button,
+.discard-form button,
+.task-actions button {
+  padding: 0.4rem 0.9rem;
+  border: none;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+.discard-form button {
+  background: var(--surface-3);
+}
+.clarify-form button:hover,
+.task-actions button:hover {
+  background: var(--accent-hover);
+}
+.discard-form button:hover {
+  background: #45454c;
+}
+
+/* ===== 任務卡 ===== */
+.task-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.task-title {
+  margin: 0;
+  font-weight: 700;
+}
+.state-pill {
+  display: inline-block;
+  padding: 0.05rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  margin-right: 0.4rem;
+  background: var(--surface-3);
+  color: var(--text-muted);
+}
+.state-next {
+  background: var(--accent-soft-bg);
+  color: var(--accent-soft-fg);
+}
+.state-waiting {
+  background: var(--warn-bg);
+  color: var(--warn-fg);
+}
+.state-done {
+  background: var(--ok-bg);
+  color: var(--ok-fg);
+}
+.task-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.task-actions button {
+  background: var(--surface-3);
+  padding: 0.25rem 0.7rem;
+  font-size: 0.8rem;
+}
+.task-actions button:hover {
+  background: #45454c;
+}
+
+/* ===== 專案卡片 ===== */
+.project-card {
+  color: inherit;
+  display: block;
+}
+.project-card:hover {
+  text-decoration: none;
+  border-color: var(--text-dim);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+}
+.project-card.stalled {
+  border: 1px solid #b45309;
+}
+.stalled-hint {
+  color: var(--warn-fg);
+  font-weight: 700;
+}
+
+/* ===== Outline 大綱樹 ===== */
+.outline-tree {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem 1.2rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+.outline-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--surface-2);
+}
+.outline-row:last-child {
+  border-bottom: none;
+}
+.outline-title {
+  flex: 1;
+}
+.outline-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.outline-actions button {
+  background: var(--surface-3);
+  padding: 0.2rem 0.6rem;
+  font-size: 0.75rem;
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  cursor: pointer;
+}
+.outline-actions button:hover {
+  background: #45454c;
+}
+.move-form {
+  display: flex;
+  gap: 0.3rem;
+}
+.move-form select {
+  padding: 0.2rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.75rem;
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+/* ===== 行事曆 ===== */
+.calendar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+.calendar-header h1 {
+  margin: 0;
+}
+.calendar-grid {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+.calendar-grid th {
+  background: var(--surface-3);
+  color: var(--text);
+  padding: 0.5rem;
+  font-size: 0.85rem;
+}
+.calendar-grid td {
+  vertical-align: top;
+  border: 1px solid var(--border);
+  padding: 0.4rem;
+  height: 6rem;
+  width: 14.28%;
+  font-size: 0.8rem;
+}
+.calendar-grid td.empty {
+  background: var(--bg);
+}
+.calendar-grid td.today {
+  background: var(--accent-soft-bg);
+}
+.day-num {
+  font-weight: 700;
+  color: var(--text-muted);
+  margin-bottom: 0.2rem;
+}
+.day-item {
+  font-size: 0.75rem;
+  margin-bottom: 0.15rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.day-item .state-pill {
+  padding: 0 0.35rem;
+  font-size: 0.65rem;
+}
+
+/* ===== 提醒表單 ===== */
+.remind-form {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 0.2rem;
+}
+.remind-form input,
+.remind-form select {
+  padding: 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-family: inherit;
+  background: var(--surface-2);
+  color: var(--text);
+}
+.remind-form button {
+  padding: 0.3rem 0.7rem;
+  border: none;
+  border-radius: 6px;
+  background: var(--surface-3);
+  color: #fff;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.remind-form button:hover {
+  background: #45454c;
+}
+
+/* ===== 番茄鐘 ===== */
+.pomodoro-link {
+  align-self: center;
+  font-weight: 700;
+}
+.pomodoro-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 2.5rem 1.5rem;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  max-width: 360px;
+}
+.phase-label {
+  color: var(--text-muted);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  margin: 0;
+}
+.timer-display {
+  font-size: 4rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  margin: 0.5rem 0 1.5rem;
+  color: var(--text);
+}
+.pomodoro-controls {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+}
+.pomodoro-controls button {
+  padding: 0.7rem 2rem;
+  border: none;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 1rem;
+  cursor: pointer;
+  background: var(--accent);
+  color: #fff;
+}
+.pomodoro-controls button:hover {
+  background: var(--accent-hover);
+}
+#abandon-btn {
+  background: var(--surface-3);
+}
+#abandon-btn:hover {
+  background: #45454c;
+}
+
+/* ===== 筆記編輯 ===== */
+.note-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+.note-title-input {
+  font-size: 1.3rem;
+  font-weight: 700;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-family: inherit;
+  background: var(--surface);
+  color: var(--text);
+}
+.note-form textarea {
+  padding: 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 1rem;
+  line-height: 1.7;
+  resize: vertical;
+  background: var(--surface);
+  color: var(--text);
+}
+.note-form input::placeholder,
+.note-form textarea::placeholder {
+  color: var(--text-dim);
+}
+.note-form button {
+  align-self: flex-start;
+  padding: 0.5rem 1.4rem;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+.note-form button:hover {
+  background: var(--accent-hover);
+}
+
+/* ===== 週回顧 ===== */
+.review-progress {
+  background: var(--surface-3);
+  border-radius: 999px;
+  height: 0.5rem;
+  overflow: hidden;
+  margin-bottom: 1rem;
+}
+.review-progress-bar {
+  background: var(--accent);
+  height: 100%;
+  transition: width 0.2s ease;
+}
+.review-steps-nav {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+.review-step-pill {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: var(--surface-3);
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+.review-step-pill:hover {
+  text-decoration: none;
+  background: #45454c;
+  color: var(--text);
+}
+.review-step-pill.done {
+  background: var(--ok-bg);
+  color: var(--ok-fg);
+}
+.review-step-pill.active {
+  background: var(--accent);
+  color: #fff;
+}
+.review-nav-form {
+  margin-top: 1.5rem;
+}
+.review-nav-form button {
+  padding: 0.6rem 1.4rem;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+.review-nav-form button:hover {
+  background: var(--accent-hover);
+}
+
+/* ===== Dashboard 統計磚 ===== */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+.stat-tile {
+  text-align: center;
+}
+.stat-value {
+  font-size: 2rem;
+  font-weight: 700;
+  margin: 0;
+  color: var(--text);
+}
+.stat-label {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin: 0.2rem 0 0;
+}
+.stat-tile.stat-warn .stat-value {
+  color: var(--warn-fg);
+}
+
+/* ===== 通知啟用提示 ===== */
+.notify-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: var(--warn-bg);
+  color: var(--warn-fg);
+  border-radius: 8px;
+  padding: 0.6rem 1rem;
+  margin-bottom: 1rem;
+  font-size: 0.85rem;
+}
+.notify-banner button {
+  padding: 0.3rem 0.8rem;
+  border: none;
+  border-radius: 6px;
+  background: var(--warn-fg);
+  color: #1c1917;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* ===== 錯誤頁 ===== */
+.error-box {
+  text-align: center;
+  padding: 3rem 1rem;
+}
+
+/* ===== 頁尾 ===== */
+.site-footer {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1rem;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  text-align: center;
+  border-top: 1px solid var(--border);
+}

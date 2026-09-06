@@ -1,0 +1,38 @@
+{% macro tree_rows(tree, other_projects) %}
+<div class="outline-tree">
+  {% for node in tree %}
+  <div class="outline-row" style="margin-left: {{ (node.depth - 1) * 1.5 }}rem;">
+    {% if node.kind == "task" %}
+      <span class="state-pill state-{{ (node.todo_state or '')|lower }}">{{ node.todo_state }}</span>
+    {% else %}
+      <span class="state-pill">{{ {"note": "筆記", "someday": "將來也許", "project": "專案"}[node.kind] }}</span>
+    {% endif %}
+    <span class="outline-title">{{ node.title }}</span>
+
+    {% if node.kind == "task" %}
+    <span class="outline-actions">
+      {% for state in ["NEXT", "WAITING", "DONE"] %}
+        {% if state != node.todo_state %}
+        <form method="post" action="{{ url_for('nodes.set_state', node_id=node.id) }}">
+          <input type="hidden" name="state" value="{{ state }}">
+          <button type="submit">{{ state }}</button>
+        </form>
+        {% endif %}
+      {% endfor %}
+      {% if other_projects %}
+      <form method="post" action="{{ url_for('nodes.move', node_id=node.id) }}" class="move-form">
+        <select name="target_project_id">
+          <option value="">搬移到…</option>
+          {% for p in other_projects %}
+          <option value="{{ p.id }}">{{ p.title }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit">搬移</button>
+      </form>
+      {% endif %}
+    </span>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endmacro %}

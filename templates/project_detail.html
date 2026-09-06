@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% from "partials/_tree.html" import tree_rows %}
+{% block title %}{{ project.title }} · orgtd{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('projects.index') }}">← 所有專案</a></p>
+<h1>{{ project.title }}</h1>
+
+<form method="post" action="{{ url_for('projects.add_child', project_id=project.id) }}" class="capture-form">
+  <input type="text" name="title" placeholder="新增子任務…" required>
+  <button type="submit">新增</button>
+</form>
+
+{% if tree %}
+{{ tree_rows(tree, other_projects) }}
+{% else %}
+<p class="meta">這個專案還沒有任何子任務。</p>
+{% endif %}
+{% endblock %}

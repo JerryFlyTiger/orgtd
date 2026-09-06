@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}專案 · orgtd{% endblock %}
+{% block content %}
+<h1>專案</h1>
+
+{% if projects %}
+<div class="card-grid">
+  {% for p in projects %}
+  <a class="card project-card {{ 'stalled' if p.id in stalled }}" href="{{ url_for('projects.detail', project_id=p.id) }}">
+    <p class="task-title">{{ p.title }}</p>
+    {% if p.id in stalled %}<p class="meta stalled-hint">⚠ 沒有下一步行動</p>{% endif %}
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<p class="meta">還沒有任何專案，從收集箱把項目分類成「專案」即可建立。</p>
+{% endif %}
+{% endblock %}

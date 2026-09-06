@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}筆記 · orgtd{% endblock %}
+{% block content %}
+<h1>筆記</h1>
+
+<form method="get" action="{{ url_for('notes.search') }}" class="capture-form">
+  <input type="text" name="q" value="{{ q }}" placeholder="搜尋筆記標題或內文…">
+  <button type="submit">搜尋</button>
+</form>
+
+{% if results is not none %}
+  <h2>「{{ q }}」的搜尋結果</h2>
+  {% if results %}
+  <div class="card-grid">
+    {% for r in results %}
+    <a class="card project-card" href="{{ url_for('notes.detail', node_id=r.id) }}">
+      <p class="task-title">{{ r.title }}</p>
+      {% if r.body %}<p class="meta">{{ r.body[:80] }}</p>{% endif %}
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="meta">沒有符合的筆記。</p>
+  {% endif %}
+{% elif notes %}
+<div class="card-grid">
+  {% for n in notes %}
+  <a class="card project-card" href="{{ url_for('notes.detail', node_id=n.id) }}">
+    <p class="task-title">{{ n.title }}</p>
+    {% if n.body %}<p class="meta">{{ n.body[:80] }}</p>{% endif %}
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<p class="meta">還沒有任何筆記，從收集箱把項目分類成「筆記」即可建立。</p>
+{% endif %}
+{% endblock %}
