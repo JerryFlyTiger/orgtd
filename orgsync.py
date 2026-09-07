@@ -16,8 +16,6 @@ Emacs 裡打的字不該被網頁悄悄蓋掉。
 from __future__ import annotations
 
 import datetime
-import hashlib
-import json
 import pathlib
 
 from sqlalchemy import select
@@ -25,46 +23,20 @@ from sqlalchemy import select
 import orgfiles
 from models import Node, Tag
 
-_STATE_FILE = "state.json"
-
-
-# ---------------------------------------------------------------------------
-# 指紋
-# ---------------------------------------------------------------------------
-
-
-def _state_path(root: pathlib.Path) -> pathlib.Path:
-    return root / orgfiles.STATE_DIR / _STATE_FILE
-
-
-def _load_state(root: pathlib.Path) -> dict:
-    path = _state_path(root)
-    if not path.exists():
-        return {}
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return {}
-
-
-def _save_state(root: pathlib.Path, state: dict) -> None:
-    path = _state_path(root)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(state, indent=2), encoding="utf-8")
-
-
-def _digest(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+# 指紋的讀寫實作在 orgfiles，因為建立資料夾時就得登記，那裡是檔案層的家。
+_load_state = orgfiles.load_state
+_save_state = orgfiles.save_state
+_digest = orgfiles.digest
 
 
 def _write_if_changed(path: pathlib.Path, text: str, state: dict) -> bool:
     """內容沒變就不寫檔——避免每次瀏覽都更新 mtime，讓外部改動偵測失準。"""
-    digest = _digest(text)
-    if state.get(path.name, {}).get("digest") == digest and path.exists():
+    d = _digest(text)
+    if state.get(path.name, {}).get("digest") == d and path.exists():
         return False
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
-    state[path.name] = {"digest": digest, "mtime": path.stat().st_mtime}
+    state[path.name] = {"digest": d, "mtime": path.stat().st_mtime}
     return True
 
 

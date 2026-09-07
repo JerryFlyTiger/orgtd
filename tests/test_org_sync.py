@@ -133,3 +133,27 @@ def test_custom_dir_expands_tilde_and_nested():
     path, err = orgfiles.validate_custom_dir("~/Documents/gtd/org")
     assert err is None, err
     assert path.is_relative_to(pathlib.Path.home().resolve())
+
+
+def test_fresh_directory_reports_no_external_changes(make_user):
+    """回歸測試：剛建好的空 org 檔不可被判定成「外部已修改」。
+
+    provision_user_directory 建檔時若不登記指紋，每個新帳號一進設定頁
+    就會看到五個檔案全掛著假警報。
+    """
+    make_user("fresh@example.com")
+    user = _user("fresh@example.com")
+    assert orgsync.externally_changed(user) == []
+
+
+def test_export_does_not_mark_files_as_externally_changed(client, make_user):
+    """自己寫出去的檔案不該回頭被當成外部改動。"""
+    make_user("k@example.com")
+    login(client, "k@example.com")
+    token = csrf_from(client, "/")
+    client.post("/inbox/capture", data={"title": "一件事", "csrf_token": token})
+
+    user = _user("k@example.com")
+    with SessionLocal() as session:
+        orgsync.rebuild_all(session, session.get(User, user.id))
+    assert orgsync.externally_changed(user) == []

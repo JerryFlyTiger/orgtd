@@ -16,6 +16,8 @@ org 檔只是匯出，那麼使用者在 Emacs 裡的修改下一次同步就會
 from __future__ import annotations
 
 import datetime
+import hashlib
+import json
 import pathlib
 import re
 import shutil
@@ -64,15 +66,54 @@ def user_org_dir(user) -> pathlib.Path:
     return config.ORG_ROOT / user.uuid
 
 
+STATE_FILE = "state.json"
+
+
+def state_path(root: pathlib.Path) -> pathlib.Path:
+    return root / STATE_DIR / STATE_FILE
+
+
+def digest(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def load_state(root: pathlib.Path) -> dict:
+    path = state_path(root)
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def save_state(root: pathlib.Path, state: dict) -> None:
+    path = state_path(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+
+
 def provision_user_directory(user) -> pathlib.Path:
-    """建立資料夾與五個標準 org 檔（已存在則不動）。"""
+    """建立資料夾與五個標準 org 檔（已存在則不動）。
+
+    新建的檔案要一併登記指紋，否則下一次 externally_changed() 會把這些
+    我們自己剛寫出來的空檔案判定成「使用者在外部改過」，設定頁上每個
+    新帳號一開始就會掛滿「外部已修改」的假警報。
+    """
     root = user_org_dir(user)
     root.mkdir(parents=True, exist_ok=True)
     (root / STATE_DIR).mkdir(exist_ok=True)
+    state = load_state(root)
+    dirty = False
     for name in ORG_FILES:
         path = root / name
         if not path.exists():
-            path.write_text(_file_header(name), encoding="utf-8")
+            text = _file_header(name)
+            path.write_text(text, encoding="utf-8")
+            state[name] = {"digest": digest(text), "mtime": path.stat().st_mtime}
+            dirty = True
+    if dirty:
+        save_state(root, state)
     return root
 
 
