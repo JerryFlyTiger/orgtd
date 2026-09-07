@@ -5,7 +5,6 @@ import tempfile
 
 from flask import (
     Blueprint,
-    current_app,
     flash,
     redirect,
     render_template,
@@ -20,7 +19,7 @@ import config
 import orgfiles
 import orgsync
 from db import SessionLocal
-from models import OAuthAccount, User
+from models import User
 from queries import get_settings, save_settings
 from security import hash_password, verify_password
 from views._scope import uid
@@ -68,16 +67,11 @@ def _org_status(user):
 def index():
     with SessionLocal() as session:
         user = session.get(User, uid())
-        linked = session.scalars(
-            select(OAuthAccount).where(OAuthAccount.user_id == user.id)
-        ).all()
         return render_template(
             "settings.html",
             user=user,
             pomodoro=get_settings(session, user.id),
             org=_org_status(user),
-            linked_providers={a.provider for a in linked},
-            google_enabled=current_app.config["GOOGLE_ENABLED"],
             has_password=bool(user.password_hash),
         )
 
@@ -122,7 +116,7 @@ def change_password():
 
     with SessionLocal() as session:
         user = session.get(User, uid())
-        # 已有密碼者必須驗證舊密碼；純 OAuth 帳號第一次設定密碼則不需要。
+        # 已有密碼者必須驗證舊密碼；還沒設過密碼的帳號第一次設定則不需要。
         if user.password_hash and not verify_password(user.password_hash, old):
             flash("目前密碼不正確。", "warn")
             return redirect(url_for("settings.index"))

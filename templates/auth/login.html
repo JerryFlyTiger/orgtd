@@ -4,13 +4,6 @@
 <div class="auth-card">
   <h1>登入</h1>
 
-  {% if config.GOOGLE_ENABLED %}
-  <a class="oauth-button oauth-google" href="{{ url_for('auth.google_start') }}">
-    使用 Google 帳號登入
-  </a>
-  <div class="auth-divider"><span>或</span></div>
-  {% endif %}
-
   <form method="post" action="{{ url_for('auth.login') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label for="email">Email</label>

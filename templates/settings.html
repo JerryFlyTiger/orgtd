@@ -97,21 +97,12 @@
 </section>
 
 <section class="card">
-  <h2>登入方式</h2>
-  <table class="settings-table">
-    <tr>
-      <th>密碼</th>
-      <td>{% if has_password %}已設定{% else %}<span class="muted">未設定（純 OAuth 帳號）</span>{% endif %}</td>
-    </tr>
-    <tr>
-      <th>Google</th>
-      <td>
-        {% if 'google' in linked_providers %}已綁定
-        {% elif google_enabled %}<a href="{{ url_for('auth.google_start') }}">綁定 Google 帳號</a>
-        {% else %}<span class="muted">此站台未啟用</span>{% endif %}
-      </td>
-    </tr>
-  </table>
+  <h2>密碼</h2>
+  <p class="muted">
+    {% if has_password %}已設定密碼。{% else %}
+    <span class="warn-text">這個帳號尚未設定密碼，目前無法登入。</span>
+    {% endif %}
+  </p>
 
   <form method="post" action="{{ url_for('settings.change_password') }}" class="stacked-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

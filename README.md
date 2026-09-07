@@ -1,10 +1,10 @@
 # orgtd
 
-GTD × org-mode 的時間與專案管理系統。多人帳號、Google 登入，資料同時
-存在 PostgreSQL 與 **org-mode 純文字檔**——網頁上編輯，也能直接用 Emacs
-或 VSCode 打開同一份檔案。
+GTD × org-mode 的時間與專案管理系統。多人帳號，資料同時存在 PostgreSQL
+與 **org-mode 純文字檔**——網頁上編輯，也能直接用 Emacs 或 VSCode 打開
+同一份檔案。
 
-Flask 3 · PostgreSQL 17 · SQLAlchemy 2.0 · Alembic · 37 個測試
+Flask 3 · PostgreSQL 17 · SQLAlchemy 2.0 · Alembic · 39 個測試
 
 ---
 
@@ -88,33 +88,38 @@ def fetch_agenda(session, user_id):   # 不是 user_id=None
 
 ## 帳號與登入
 
-- **Email + 密碼**：argon2id 雜湊（OWASP 現行首選），最短 12 字元。
-  依 NIST SP 800-63B 的建議，長度優先於「大小寫加符號」那類複雜度規則。
-- **Google 登入**：OAuth 2.0 / OIDC，透過 discovery 文件取得端點。
-- **CSRF**：所有 POST 走 Flask-WTF 的 token 驗證（JSON 請求走 `X-CSRFToken` 標頭）。
+只做一種登入方式：**email + 密碼**。
+
+- argon2id 雜湊（OWASP 現行首選），密碼最短 12 字元。依 NIST SP 800-63B
+  的建議，長度優先於「大小寫加符號」那類複雜度規則——後者只會逼出
+  `P@ssw0rd!` 這種好猜又難記的密碼。
+- **CSRF**：所有 POST 走 Flask-WTF 的 token 驗證（JSON 請求走
+  `X-CSRFToken` 標頭）。
+- **Session**：Flask-Login，`session_protection="strong"`。
 
 兩個刻意的安全處理：
 
-- **帳號枚舉**：「帳號不存在」與「密碼錯誤」回傳完全相同的訊息，IDOR 的
-  404 也不區分「不存在」與「不屬於你」——否則攻擊者能靠回應差異探測。
-- **OAuth 帳號接管**：Google 登入要併進既有的同 email 帳號時，必須
-  `email_verified` 為真才併。否則任何人只要在自己的供應商端填上別人的
-  email，就能接管既有帳號。
+- **帳號枚舉防護**：「帳號不存在」與「密碼錯誤」回傳完全相同的訊息；
+  IDOR 的 404 也不區分「不存在」與「不屬於你」。否則攻擊者能靠回應差異
+  探測出哪些帳號或 id 是真的。
+- **未設密碼的帳號無法登入**：`password_hash` 允許為 NULL（舊單人資料
+  遷移過來的站長帳號就是這個狀態），`verify_password()` 對 NULL 一律回
+  `False`，不會因為「空密碼比對成功」而放行。
 
-### 尚未支援 Apple 與 X 登入
+### 為什麼沒有第三方登入
 
-兩者都不是技術問題，是外部成本問題：
+Google、Apple、X 都評估過，結論是成本大於價值：
 
-- **Sign in with Apple** 需要 Apple Developer Program 會籍，**每年 99 美元**，
-  且不接受 `localhost` 回呼，必須先有已驗證的 HTTPS 網域。
-- **Log in with X** 目前免費層在多數端點限制到 24 小時 1 次請求。登入流程
-  結束後必須呼叫 `GET /2/users/me` 才能識別使用者，等於第二個人登入就會失敗。
-  實務上要 Basic 層，**每月 200 美元**。
+| | 費用 | 其他障礙 |
+|---|---|---|
+| Google | 免費 | 要在 Google Cloud Console 申請憑證、設定回呼網址 |
+| Apple | **每年 99 美元**（Developer Program） | 不接受 `localhost` 回呼，必須先有已驗證的 HTTPS 網域；client secret 是每半年要重簽的 JWT |
+| X | **每月 200 美元**（Basic 層） | 免費層多數端點限制到 24 小時 1 次請求，而登入後必須呼叫 `GET /2/users/me` 才能識別使用者——等於第二個人登入就失敗 |
 
-程式碼的 `oauth_accounts` 表用 `(provider, provider_user_id)` 當唯一鍵，
-再加供應商只是多一組設定與一個 callback，不必改結構。
-
----
+Google 那條唯一的障礙只是申請流程，但為了一個自架的個人系統多接一個
+外部相依與一組要保管的密鑰，不划算。要加回來的話，
+`migrations/versions/b2c3d4e5f6a7_drop_oauth_accounts.py` 的 `downgrade()`
+就是現成的建表腳本。
 
 ## org 資料夾
 
@@ -218,19 +223,7 @@ python3 -c "import secrets; print(secrets.token_hex(32))"   # 貼進 ORGTD_SECRE
 | `ORGTD_ORG_ROOT` | org 資料夾根目錄，預設 `~/orgtd-data` |
 | `ORGTD_ALLOW_CUSTOM_ORG_DIR` | 自架單人設 `1`，對外站台設 `0` |
 | `ORGTD_ALLOW_REGISTRATION` | 是否開放註冊 |
-| `ORGTD_GOOGLE_CLIENT_ID` / `_SECRET` | 留空則不顯示 Google 按鈕 |
 | `ORGTD_NOTIFY_EMAIL` | 桌面提醒發給誰，留空取最早建立的帳號 |
-
-### 設定 Google 登入
-
-1. [Google Cloud Console](https://console.cloud.google.com/) → 建專案
-2. API 和服務 → 憑證 → 建立 OAuth 用戶端 ID → 網頁應用程式
-3. 「已授權的重新導向 URI」填：
-   - 本機開發 `http://localhost:5001/auth/google/callback`
-   - 正式環境 `https://你的網域/auth/google/callback`
-4. 把用戶端 ID 與密鑰填進 `.env`
-
-Google 允許 `localhost` 作為開發用回呼，所以本機就能完整測完整個流程。
 
 ---
 
@@ -269,13 +262,13 @@ ORGTD_DATABASE_URL="postgresql+psycopg://$(whoami)@localhost:5432/orgtd_test" \
   .venv/bin/python -m pytest tests/ -q
 ```
 
-37 個測試，分四組：
+39 個測試，分四組：
 
 | 檔案 | 守的是什麼 |
 |---|---|
 | `test_tenant_isolation.py` | 11 項。B 使用者讀不到也改不到 A 的任何東西 |
+| `test_org_sync.py` | 11 項。外部編輯真的能回寫，且節點身分不斷 |
 | `test_org_roundtrip.py` | 9 項。org 解析／輸出無損，含中文標題、標籤、重複規則 |
-| `test_org_sync.py` | 9 項。外部編輯真的能回寫，且節點身分不斷 |
 | `test_auth.py` / `test_csrf.py` | 8 項。登入、存取控制、CSRF |
 
 幾個測試是回歸測試，對應開發時真的踩到的坑：
@@ -287,6 +280,9 @@ ORGTD_DATABASE_URL="postgresql+psycopg://$(whoami)@localhost:5432/orgtd_test" \
   後來改成「必須在家目錄內」的正面表列
 - `test_emacs_style_localised_daynames_parse`——Emacs 依語系會把星期寫成
   「週一」，解析器不能假設是英文縮寫
+- `test_fresh_directory_reports_no_external_changes`——建立資料夾時忘了
+  登記檔案指紋，導致每個新帳號一進設定頁就看到五個檔案全掛著
+  「外部已修改」的假警報
 
 ---
 
@@ -361,7 +357,7 @@ views/            9 個功能 blueprint + auth + settings + _scope 取用輔助
 templates/        Jinja2 模板
 static/           CSS 與兩支 JS（番茄鐘計時、提醒輪詢）
 migrations/       Alembic 遷移
-tests/            37 個測試
+tests/            39 個測試
 launchd/          提醒排程的 plist
 gui/              macOS 雙擊啟動的 AppleScript
 ```

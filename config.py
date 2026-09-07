@@ -35,11 +35,6 @@ ALLOW_CUSTOM_ORG_DIR = _bool("ORGTD_ALLOW_CUSTOM_ORG_DIR", False)
 # 是否開放註冊。作品集展示站可關閉，只留 demo 帳號。
 ALLOW_REGISTRATION = _bool("ORGTD_ALLOW_REGISTRATION", True)
 
-# --- OAuth ---
-GOOGLE_CLIENT_ID = os.environ.get("ORGTD_GOOGLE_CLIENT_ID", "")
-GOOGLE_CLIENT_SECRET = os.environ.get("ORGTD_GOOGLE_CLIENT_SECRET", "")
-GOOGLE_ENABLED = bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)
-
 # --- Cookie 安全 ---
 # SESSION_COOKIE_SECURE 在 HTTPS 上線後必須為 True，本機 http 開發要 False，
 # 否則瀏覽器不會送 cookie、登入看起來像「登入成功但馬上被登出」。
@@ -70,5 +65,4 @@ def apply(app) -> None:
         ORG_ROOT=ORG_ROOT,
         ALLOW_CUSTOM_ORG_DIR=ALLOW_CUSTOM_ORG_DIR,
         ALLOW_REGISTRATION=ALLOW_REGISTRATION,
-        GOOGLE_ENABLED=GOOGLE_ENABLED,
     )

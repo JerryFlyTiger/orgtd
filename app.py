@@ -27,9 +27,7 @@ def create_app():
     csrf.init_app(app)
     login_manager.init_app(app)
 
-    from views.auth import bp as auth_bp, init_oauth
-
-    init_oauth(app)
+    from views.auth import bp as auth_bp
 
     @login_manager.user_loader
     def load_user(user_id):

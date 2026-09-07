@@ -5,7 +5,7 @@
 構成 outline 大綱樹。Clarify 動作只是 UPDATE kind/parent_id/todo_state，
 不用搬表，對應 GTD 流程的流動性。
 
-多租戶：除 users / oauth_accounts 外，每張表都掛 user_id。所有查詢
+多租戶：除 users 外，每張表都掛 user_id。所有查詢
 一律以 user_id 起手，索引也把 user_id 放在最左欄，讓多租戶篩選能吃到索引。
 
 org 檔對應：每個 node 有一組 (org_file, org_id)。org_id 寫進 org 檔的
@@ -29,7 +29,7 @@ def _uuid4() -> str:
 
 
 class User(Base):
-    """一個帳號。密碼可為 NULL —— 純 OAuth 註冊的使用者沒有本地密碼。"""
+    """一個帳號。密碼可為 NULL —— 帳號已建立但還沒設定密碼，此時無法登入。"""
 
     __tablename__ = "users"
 
@@ -43,7 +43,9 @@ class User(Base):
     email: Mapped[str] = mapped_column(sa.String(255), unique=True, nullable=False)
     display_name: Mapped[str] = mapped_column(sa.String(80), nullable=False)
 
-    # argon2 雜湊；OAuth-only 帳號為 NULL，此時不允許走密碼登入。
+    # argon2 雜湊。允許為 NULL：帳號可能先被建立（例如舊資料遷移過來的
+    # 站長帳號）而還沒設密碼，此時不得以任何密碼登入，由
+    # security.verify_password 擋住。
     password_hash: Mapped[str | None] = mapped_column(sa.String(255))
 
     # 這個人的 org 檔存放目錄。本機模式由使用者在設定頁指定（例如 ~/org）；
@@ -59,10 +61,6 @@ class User(Base):
         sa.DateTime(timezone=True)
     )
 
-    oauth_accounts: Mapped[list["OAuthAccount"]] = relationship(
-        "OAuthAccount", back_populates="user", cascade="all, delete-orphan"
-    )
-
     # Flask-Login 介面（get_id 必須回傳字串）
     @property
     def is_authenticated(self) -> bool:
@@ -74,30 +72,6 @@ class User(Base):
 
     def get_id(self) -> str:
         return str(self.id)
-
-
-class OAuthAccount(Base):
-    """外部身分供應商綁定。一個 user 可綁多個 provider，也可事後解綁。"""
-
-    __tablename__ = "oauth_accounts"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
-    )
-    provider: Mapped[str] = mapped_column(sa.String(20), nullable=False)  # google
-    # 供應商端的穩定使用者 ID（Google 的 sub）。刻意不用 email 當鍵——
-    # email 可以在供應商端被改掉，sub 不會。
-    provider_user_id: Mapped[str] = mapped_column(sa.String(255), nullable=False)
-    created_at: Mapped[datetime.datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=func.now()
-    )
-
-    user: Mapped["User"] = relationship("User", back_populates="oauth_accounts")
-
-    __table_args__ = (
-        UniqueConstraint("provider", "provider_user_id", name="uq_oauth_provider_user"),
-    )
 
 
 node_tags = Table(

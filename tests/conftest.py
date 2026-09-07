@@ -47,7 +47,7 @@ def clean_db():
         conn.execute(
             text(
                 "TRUNCATE users, nodes, tags, node_tags, pomodoro_sessions, "
-                "weekly_reviews, settings, oauth_accounts RESTART IDENTITY CASCADE"
+                "weekly_reviews, settings RESTART IDENTITY CASCADE"
             )
         )
     yield

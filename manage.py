@@ -74,7 +74,7 @@ def list_users():
             print("目前沒有任何帳號。")
             return
         for u in users:
-            pw = "有密碼" if u.password_hash else "無密碼（僅 OAuth）"
+            pw = "有密碼" if u.password_hash else "尚未設定密碼，無法登入"
             print(f"  #{u.id}  {u.email:35s} {u.display_name:12s} {pw}")
             print(f"       org 資料夾：{orgfiles.user_org_dir(u)}")
 

@@ -78,18 +78,22 @@ def test_wrong_password_message_does_not_leak_account_existence(client, make_use
     assert "email 或密碼不正確" in r2.get_data(as_text=True)
 
 
-def test_oauth_only_account_cannot_password_login(client, make_user):
-    """password_hash 為 NULL 的帳號不得因為「空密碼比對成功」而登入。"""
+def test_account_without_password_cannot_log_in(client, make_user):
+    """password_hash 為 NULL 的帳號不得因為「空密碼比對成功」而登入。
+
+    這不是假設性的狀況：舊單人資料遷移過來的站長帳號就是這個狀態，
+    要先跑 manage.py set-password 才能登入。
+    """
     from db import SessionLocal
     from models import User
     from sqlalchemy import select
 
-    make_user("oauth@example.com")
+    make_user("nopw@example.com")
     with SessionLocal() as session:
-        u = session.scalar(select(User).where(User.email == "oauth@example.com"))
+        u = session.scalar(select(User).where(User.email == "nopw@example.com"))
         u.password_hash = None
         session.commit()
 
     for attempt in ["", PASSWORD, "anything"]:
-        login(client, "oauth@example.com", attempt)
+        login(client, "nopw@example.com", attempt)
         assert client.get("/").status_code == 302

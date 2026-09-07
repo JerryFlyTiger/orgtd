@@ -7,8 +7,6 @@ alembic>=1.13
 flask-login>=0.6          # session 管理
 flask-wtf>=1.2            # 表單與 CSRF token（原本完全沒有 CSRF 防護）
 argon2-cffi>=23.1         # 密碼雜湊，OWASP 現行首選
-authlib>=1.3              # OAuth 2.0 / OIDC client（Google 登入）
-requests>=2.31            # authlib 的 Flask client 需要它做 token 交換
 email-validator>=2.1      # 註冊時驗證 email 格式
 
 # 部署

@@ -25,8 +25,9 @@ def hash_password(raw: str) -> str:
 def verify_password(password_hash: str | None, raw: str) -> bool:
     """驗證密碼。
 
-    password_hash 為 None 代表這是純 OAuth 帳號，沒有本地密碼——
-    一律拒絕，且不可回報「此帳號無密碼」之類的訊息（會洩漏帳號存在與否）。
+    password_hash 為 None 代表這個帳號還沒設定密碼（例如從舊單人資料
+    遷移過來的站長帳號）——一律拒絕，且不可回報「此帳號無密碼」之類的
+    訊息，那會洩漏帳號是否存在。
     """
     if not password_hash:
         return False
