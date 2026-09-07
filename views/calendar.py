@@ -5,9 +5,11 @@ import datetime
 from collections import defaultdict
 
 from flask import Blueprint, abort, redirect, render_template, url_for
+from flask_login import login_required
 
 from db import SessionLocal
 from queries import fetch_month_nodes
+from views._scope import uid
 
 bp = Blueprint("calendar", __name__, url_prefix="/calendar")
 
@@ -15,18 +17,20 @@ _MIN_YEAR, _MAX_YEAR = 1970, 2999
 
 
 @bp.route("/")
+@login_required
 def today():
     now = datetime.date.today()
     return redirect(url_for("calendar.month_view", year=now.year, month=now.month))
 
 
 @bp.route("/<int:year>/<int:month>")
+@login_required
 def month_view(year, month):
     if not (_MIN_YEAR <= year <= _MAX_YEAR) or not (1 <= month <= 12):
         abort(404)
 
     with SessionLocal() as session:
-        nodes = fetch_month_nodes(session, year, month)
+        nodes = fetch_month_nodes(session, uid(), year, month)
 
     by_day = defaultdict(list)
     for node in nodes:

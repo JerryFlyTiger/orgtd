@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
   <title>{% block title %}orgtd{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
@@ -10,6 +11,7 @@
   <header class="site-header">
     <div class="header-inner">
       <a class="site-title" href="{{ url_for('inbox.index') }}">orgtd</a>
+      {% if current_user.is_authenticated %}
       <nav class="main-nav">
         <a href="{{ url_for('inbox.index') }}">
           收集箱
@@ -29,14 +31,32 @@
           {% if weekly_pomodoro_count %}<span class="badge">{{ weekly_pomodoro_count }}</span>{% endif %}
         </a>
       </nav>
+      <div class="user-menu">
+        <a href="{{ url_for('settings.index') }}" class="user-name">{{ current_user.display_name }}</a>
+        <form method="post" action="{{ url_for('auth.logout') }}" class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="link-button">登出</button>
+        </form>
+      </div>
+      {% endif %}
     </div>
   </header>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div class="flash-area">
+      {% for category, message in messages %}
+      <div class="flash flash-{{ category }}">{{ message }}</div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  {% endwith %}
 
   <main>
     {% block content %}{% endblock %}
   </main>
 
-  <footer class="site-footer">orgtd — 本機個人時間與專案管理系統</footer>
+  <footer class="site-footer">orgtd — GTD × org-mode 時間與專案管理系統</footer>
   {% block scripts %}{% endblock %}
 </body>
 </html>

@@ -1,23 +1,27 @@
 """Agenda 今日視圖：GTD 的 Engage 階段。"""
 
 from flask import Blueprint, jsonify, render_template
+from flask_login import login_required
 
 from db import SessionLocal
 from queries import claim_due_reminders, fetch_agenda
+from views._scope import uid
 
 bp = Blueprint("agenda", __name__)
 
 
 @bp.route("/agenda")
+@login_required
 def index():
     with SessionLocal() as session:
-        data = fetch_agenda(session)
+        data = fetch_agenda(session, uid())
         return render_template("agenda.html", **data)
 
 
 @bp.route("/api/due")
+@login_required
 def api_due():
     """頁面開著時由 reminders.js 每分鐘輪詢：回傳到點提醒，並就地標記已通知。"""
     with SessionLocal() as session:
-        due = claim_due_reminders(session)
+        due = claim_due_reminders(session, uid())
         return jsonify([{"id": n.id, "title": n.title} for n in due])

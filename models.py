@@ -4,16 +4,101 @@
 將來也許都存在同一張 nodes 表，用 kind 區分語意、parent_id 自關聯
 構成 outline 大綱樹。Clarify 動作只是 UPDATE kind/parent_id/todo_state，
 不用搬表，對應 GTD 流程的流動性。
+
+多租戶：除 users / oauth_accounts 外，每張表都掛 user_id。所有查詢
+一律以 user_id 起手，索引也把 user_id 放在最左欄，讓多租戶篩選能吃到索引。
+
+org 檔對應：每個 node 有一組 (org_file, org_id)。org_id 寫進 org 檔的
+:PROPERTIES: 抽屜（等同 Emacs org-id 的 :ID:），所以使用者在 Emacs 裡
+搬動、改寫節點之後，仍然對得回同一列 DB 資料。
 """
 
 import datetime
+import uuid
 
 import sqlalchemy as sa
-from sqlalchemy import ForeignKey, Index, Table, func
+from sqlalchemy import ForeignKey, Index, Table, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db import Base
+
+
+def _uuid4() -> str:
+    return str(uuid.uuid4())
+
+
+class User(Base):
+    """一個帳號。密碼可為 NULL —— 純 OAuth 註冊的使用者沒有本地密碼。"""
+
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # 對外識別碼。伺服器模式下同時是這個人的 org 資料夾名稱，
+    # 用 UUID 而非流水號，避免從資料夾名稱推算出使用者總數。
+    uuid: Mapped[str] = mapped_column(
+        sa.String(36), unique=True, nullable=False, default=_uuid4
+    )
+
+    email: Mapped[str] = mapped_column(sa.String(255), unique=True, nullable=False)
+    display_name: Mapped[str] = mapped_column(sa.String(80), nullable=False)
+
+    # argon2 雜湊；OAuth-only 帳號為 NULL，此時不允許走密碼登入。
+    password_hash: Mapped[str | None] = mapped_column(sa.String(255))
+
+    # 這個人的 org 檔存放目錄。本機模式由使用者在設定頁指定（例如 ~/org）；
+    # 伺服器模式為 NULL，改用受管目錄 <ORGTD_ORG_ROOT>/<uuid>/，
+    # 不讓遠端使用者指定任意路徑（那是 path traversal 破口）。
+    org_directory: Mapped[str | None] = mapped_column(sa.Text)
+
+    is_active: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        sa.DateTime(timezone=True), server_default=func.now()
+    )
+    last_login_at: Mapped[datetime.datetime | None] = mapped_column(
+        sa.DateTime(timezone=True)
+    )
+
+    oauth_accounts: Mapped[list["OAuthAccount"]] = relationship(
+        "OAuthAccount", back_populates="user", cascade="all, delete-orphan"
+    )
+
+    # Flask-Login 介面（get_id 必須回傳字串）
+    @property
+    def is_authenticated(self) -> bool:
+        return True
+
+    @property
+    def is_anonymous(self) -> bool:
+        return False
+
+    def get_id(self) -> str:
+        return str(self.id)
+
+
+class OAuthAccount(Base):
+    """外部身分供應商綁定。一個 user 可綁多個 provider，也可事後解綁。"""
+
+    __tablename__ = "oauth_accounts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    provider: Mapped[str] = mapped_column(sa.String(20), nullable=False)  # google
+    # 供應商端的穩定使用者 ID（Google 的 sub）。刻意不用 email 當鍵——
+    # email 可以在供應商端被改掉，sub 不會。
+    provider_user_id: Mapped[str] = mapped_column(sa.String(255), nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        sa.DateTime(timezone=True), server_default=func.now()
+    )
+
+    user: Mapped["User"] = relationship("User", back_populates="oauth_accounts")
+
+    __table_args__ = (
+        UniqueConstraint("provider", "provider_user_id", name="uq_oauth_provider_user"),
+    )
+
 
 node_tags = Table(
     "node_tags",
@@ -29,6 +114,9 @@ class Node(Base):
     __tablename__ = "nodes"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
     parent_id: Mapped[int | None] = mapped_column(ForeignKey("nodes.id", ondelete="CASCADE"))
 
     kind: Mapped[str] = mapped_column(sa.String(20), nullable=False, default="inbox")
@@ -51,6 +139,12 @@ class Node(Base):
     notified_at: Mapped[datetime.datetime | None] = mapped_column(sa.DateTime(timezone=True))
 
     position: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
+
+    # --- org 檔對應 ---
+    # org_id 寫進 :PROPERTIES: 抽屜的 :ID:，是 DB 列與 org 檔節點之間的錨。
+    org_id: Mapped[str] = mapped_column(sa.String(36), nullable=False, default=_uuid4)
+    # 這個節點目前落在哪個 org 檔（inbox.org / projects.org / ...）。
+    org_file: Mapped[str | None] = mapped_column(sa.String(255))
 
     archived_at: Mapped[datetime.datetime | None] = mapped_column(sa.DateTime(timezone=True))
     created_at: Mapped[datetime.datetime] = mapped_column(
@@ -86,27 +180,38 @@ class Node(Base):
         "PomodoroSession", back_populates="node"
     )
 
+    __table_args__ = (
+        # org_id 只需在同一個使用者內唯一，跨使用者不必協調。
+        UniqueConstraint("user_id", "org_id", name="uq_nodes_user_org_id"),
+    )
 
-Index("ix_nodes_parent", Node.parent_id)
-Index("ix_nodes_kind_state", Node.kind, Node.todo_state)
+
+# 多租戶索引原則：user_id 一律放最左，否則每次查詢都要全表掃再篩使用者。
+Index("ix_nodes_user_parent", Node.user_id, Node.parent_id)
+Index("ix_nodes_user_kind_state", Node.user_id, Node.kind, Node.todo_state)
 # 部分索引：agenda 只查未封存節點，索引縮小、查詢更快。
 Index(
-    "ix_nodes_scheduled",
+    "ix_nodes_user_scheduled",
+    Node.user_id,
     Node.scheduled_at,
     postgresql_where=Node.archived_at.is_(None),
 )
 Index(
-    "ix_nodes_deadline",
+    "ix_nodes_user_deadline",
+    Node.user_id,
     Node.deadline_at,
     postgresql_where=Node.archived_at.is_(None),
 )
 Index(
-    "ix_nodes_remind",
+    "ix_nodes_user_remind",
+    Node.user_id,
     Node.remind_at,
     postgresql_where=sa.and_(Node.archived_at.is_(None), Node.notified_at.is_(None)),
 )
 Index("ix_nodes_search", Node.search_vec, postgresql_using="gin")
 # 中文以 trigram 做子字串模糊搜尋（PostgreSQL 內建全文搜尋不斷中文詞）。
+# GIN 不支援多欄混用 btree 欄位，所以 user_id 進不了這個索引，
+# 由查詢端的 user_id = :uid 條件在 bitmap 階段再篩一次。
 Index(
     "ix_nodes_title_trgm", Node.title, postgresql_using="gin", postgresql_ops={"title": "gin_trgm_ops"}
 )
@@ -119,12 +224,18 @@ class Tag(Base):
     __tablename__ = "tags"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(sa.String(50), unique=True, nullable=False)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(sa.String(50), nullable=False)
     color: Mapped[str | None] = mapped_column(sa.String(7))  # #rrggbb
 
     nodes: Mapped[list["Node"]] = relationship(
         "Node", secondary=node_tags, back_populates="tags"
     )
+
+    # 原本 name 是全域 unique，多人之後會讓 B 使用者無法建立 A 已用過的標籤。
+    __table_args__ = (UniqueConstraint("user_id", "name", name="uq_tags_user_name"),)
 
 
 class PomodoroSession(Base):
@@ -133,6 +244,9 @@ class PomodoroSession(Base):
     __tablename__ = "pomodoro_sessions"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
     node_id: Mapped[int | None] = mapped_column(ForeignKey("nodes.id", ondelete="SET NULL"))
 
     started_at: Mapped[datetime.datetime] = mapped_column(
@@ -148,8 +262,8 @@ class PomodoroSession(Base):
     node: Mapped["Node | None"] = relationship("Node", back_populates="pomodoros")
 
 
-Index("ix_pomo_node", PomodoroSession.node_id)
-Index("ix_pomo_started", PomodoroSession.started_at)
+Index("ix_pomo_user_node", PomodoroSession.user_id, PomodoroSession.node_id)
+Index("ix_pomo_user_started", PomodoroSession.user_id, PomodoroSession.started_at)
 
 
 class WeeklyReview(Base):
@@ -158,7 +272,10 @@ class WeeklyReview(Base):
     __tablename__ = "weekly_reviews"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    week_start: Mapped[datetime.date] = mapped_column(sa.Date, nullable=False, unique=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    week_start: Mapped[datetime.date] = mapped_column(sa.Date, nullable=False)
     checklist: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     reflection: Mapped[str | None] = mapped_column(sa.Text)
     completed_at: Mapped[datetime.datetime | None] = mapped_column(sa.DateTime(timezone=True))
@@ -166,11 +283,21 @@ class WeeklyReview(Base):
         sa.DateTime(timezone=True), server_default=func.now()
     )
 
+    # 原本 week_start 是全域 unique —— 多人之後，第二個使用者做同一週的回顧
+    # 會直接撞主鍵衝突。唯一性必須連同 user_id 一起判定。
+    __table_args__ = (
+        UniqueConstraint("user_id", "week_start", name="uq_reviews_user_week"),
+    )
+
 
 class Setting(Base):
-    """單人設定（番茄時長、每日目標等）單列 JSONB，改設定免 migration。"""
+    """每人一列設定（番茄時長、每日目標等）JSONB，改設定免 migration。"""
 
     __tablename__ = "settings"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    # 原本是「單人設定固定第 1 列」的設計，改為一人一列。
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False
+    )
     data: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)

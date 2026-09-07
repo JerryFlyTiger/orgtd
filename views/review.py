@@ -3,6 +3,7 @@
 import datetime
 
 from flask import Blueprint, abort, redirect, render_template, request, url_for
+from flask_login import login_required
 from sqlalchemy import select
 
 from db import SessionLocal
@@ -14,6 +15,7 @@ from queries import (
     projects_with_stalled_flag,
     weekly_pomodoro_stats,
 )
+from views._scope import uid
 
 bp = Blueprint("review", __name__, url_prefix="/review")
 
@@ -34,54 +36,63 @@ def _week_start(today=None):
     return today - datetime.timedelta(days=today.weekday())  # 週一為每週起點
 
 
-def _get_or_create_review(session):
+def _get_or_create_review(session, user_id):
     week_start = _week_start()
     review = session.scalar(
-        select(WeeklyReview).where(WeeklyReview.week_start == week_start)
+        select(WeeklyReview).where(
+            WeeklyReview.user_id == user_id, WeeklyReview.week_start == week_start
+        )
     )
     if review is None:
-        review = WeeklyReview(week_start=week_start, checklist={})
+        review = WeeklyReview(user_id=user_id, week_start=week_start, checklist={})
         session.add(review)
         session.commit()
     return review
 
 
-def _step_context(session, n):
+def _step_context(session, user_id, n):
     if n == 1:
         items = session.scalars(
             select(Node)
-            .where(Node.kind == "inbox", Node.archived_at.is_(None))
+            .where(
+                Node.user_id == user_id,
+                Node.kind == "inbox",
+                Node.archived_at.is_(None),
+            )
             .order_by(Node.created_at)
         ).all()
         return {"inbox_items": items}
     if n == 2:
-        return {"next_actions": list_by_state(session, "NEXT")}
+        return {"next_actions": list_by_state(session, user_id, "NEXT")}
     if n == 3:
-        return {"waiting_items": list_by_state(session, "WAITING")}
+        return {"waiting_items": list_by_state(session, user_id, "WAITING")}
     if n == 4:
-        return {"projects_stalled": projects_with_stalled_flag(session)}
+        return {"projects_stalled": projects_with_stalled_flag(session, user_id)}
     if n == 5:
-        return {"someday_items": list_someday(session)}
+        return {"someday_items": list_someday(session, user_id)}
     if n == 6:
-        return {"upcoming": fetch_upcoming(session, days=7)}
+        return {"upcoming": fetch_upcoming(session, user_id, days=7)}
     if n == 7:
-        return {"pomodoro_stats": weekly_pomodoro_stats(session)}
+        return {"pomodoro_stats": weekly_pomodoro_stats(session, user_id)}
     return {}
 
 
 @bp.route("/")
+@login_required
 def index():
     return redirect(url_for("review.step", n=1))
 
 
 @bp.route("/step/<int:n>")
+@login_required
 def step(n):
     if not (1 <= n <= len(STEPS)):
         abort(404)
     with SessionLocal() as session:
-        review = _get_or_create_review(session)
+        u = uid()
+        review = _get_or_create_review(session, u)
         done_steps = sum(1 for s in STEPS if review.checklist.get(s["key"]))
-        context = _step_context(session, n)
+        context = _step_context(session, u, n)
         return render_template(
             "review/wizard.html",
             n=n,
@@ -93,11 +104,12 @@ def step(n):
 
 
 @bp.route("/step/<int:n>/complete", methods=["POST"])
+@login_required
 def complete_step(n):
     if not (1 <= n <= len(STEPS)):
         abort(404)
     with SessionLocal() as session:
-        review = _get_or_create_review(session)
+        review = _get_or_create_review(session, uid())
         checklist = dict(review.checklist)
         checklist[STEPS[n - 1]["key"]] = True
         review.checklist = checklist
@@ -111,8 +123,9 @@ def complete_step(n):
 
 
 @bp.route("/done")
+@login_required
 def done():
     with SessionLocal() as session:
-        review = _get_or_create_review(session)
+        review = _get_or_create_review(session, uid())
         done_steps = sum(1 for s in STEPS if review.checklist.get(s["key"]))
         return render_template("review/done.html", review=review, done_steps=done_steps, steps=STEPS)

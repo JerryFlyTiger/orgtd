@@ -4,12 +4,15 @@ import calendar
 import datetime
 
 from flask import Blueprint, abort, redirect, request, url_for
+from flask_login import login_required
 from sqlalchemy import func, select
 
 from constants import REPEAT_RULES, TODO_STATES
 from db import SessionLocal
 from models import Node, Tag
+from orgsync import sync_node
 from queries import is_descendant
+from views._scope import owned_node, uid
 
 bp = Blueprint("nodes", __name__, url_prefix="/nodes")
 
@@ -31,14 +34,13 @@ def _advance(dt, rule):
 
 
 @bp.route("/<int:node_id>/state", methods=["POST"])
+@login_required
 def set_state(node_id):
     state = request.form.get("state", "")
     if state not in TODO_STATES:
         abort(404)
     with SessionLocal() as session:
-        node = session.get(Node, node_id)
-        if node is None or node.archived_at is not None:
-            abort(404)
+        node = owned_node(session, node_id, allow_archived=False)
         if state == "DONE" and node.repeat_rule in REPEAT_RULES:
             # org 的重複任務：完成不是關閉，而是把排程/截止日往後推一輪，狀態留在 NEXT。
             if node.scheduled_at:
@@ -53,85 +55,112 @@ def set_state(node_id):
                 datetime.datetime.now(datetime.timezone.utc) if state == "DONE" else None
             )
         session.commit()
+        sync_node(session, node)
     return redirect(request.referrer or url_for("agenda.index"))
 
 
 @bp.route("/<int:node_id>/remind", methods=["POST"])
+@login_required
 def set_reminder(node_id):
     raw = request.form.get("remind_at", "")
     repeat_rule = request.form.get("repeat_rule", "") or None
     if repeat_rule is not None and repeat_rule not in REPEAT_RULES:
         abort(404)
     with SessionLocal() as session:
-        node = session.get(Node, node_id)
-        if node is None or node.archived_at is not None:
-            abort(404)
+        node = owned_node(session, node_id, allow_archived=False)
         node.remind_at = datetime.datetime.strptime(raw, "%Y-%m-%dT%H:%M") if raw else None
         node.notified_at = None
         node.repeat_rule = repeat_rule
         session.commit()
+        sync_node(session, node)
     return redirect(request.referrer or url_for("agenda.index"))
 
 
 @bp.route("/<int:node_id>/move", methods=["POST"])
+@login_required
 def move(node_id):
     target_id = request.form.get("target_project_id", type=int)
     with SessionLocal() as session:
-        node = session.get(Node, node_id)
-        if node is None or node.archived_at is not None:
-            abort(404)
-        target = session.get(Node, target_id) if target_id else None
-        if target is None or target.kind != "project" or target.archived_at is not None:
-            abort(404)
-        if is_descendant(session, target.id, node.id):
+        node = owned_node(session, node_id, allow_archived=False)
+        # 目標專案也必須是自己的，否則等於把節點搬進別人的樹。
+        target = owned_node(session, target_id, kind="project", allow_archived=False)
+        if is_descendant(session, uid(), target.id, node.id):
             # 目標是自己的子孫，搬過去會形成循環，拒絕。
             abort(404)
+        old_file = None
+        from orgsync import file_for
+
+        old_file = file_for(session, node)
         max_position = session.scalar(
-            select(func.coalesce(func.max(Node.position), -1)).where(Node.parent_id == target.id)
+            select(func.coalesce(func.max(Node.position), -1)).where(
+                Node.user_id == uid(), Node.parent_id == target.id
+            )
         )
         node.parent_id = target.id
         node.position = max_position + 1
         session.commit()
+        # 搬家可能跨檔（例如收集箱 → 專案），來源與目標兩個檔都要重寫。
+        sync_node(session, node)
+        if file_for(session, node) != old_file:
+            from models import User
+
+            from orgsync import rebuild_file
+
+            rebuild_file(session, session.get(User, uid()), old_file)
     return redirect(request.referrer or url_for("projects.index"))
 
 
 @bp.route("/<int:node_id>/archive", methods=["POST"])
+@login_required
 def archive(node_id):
     with SessionLocal() as session:
-        node = session.get(Node, node_id)
-        if node is None:
-            abort(404)
+        from models import User
+
+        from orgsync import file_for, rebuild_file
+
+        node = owned_node(session, node_id)
+        old_file = file_for(session, node)
         node.archived_at = datetime.datetime.now(datetime.timezone.utc)
         session.commit()
+        # 封存會讓節點換到 archive.org，原檔也要重寫才不會留下殘影。
+        sync_node(session, node)
+        rebuild_file(session, session.get(User, uid()), old_file)
     return redirect(request.referrer or url_for("agenda.index"))
 
 
 @bp.route("/<int:node_id>/tags", methods=["POST"])
+@login_required
 def add_tag(node_id):
     name = request.form.get("name", "").strip()
     with SessionLocal() as session:
-        node = session.get(Node, node_id)
-        if node is None:
-            abort(404)
+        node = owned_node(session, node_id)
         if name:
-            tag = session.scalar(select(Tag).where(Tag.name == name))
+            # 標籤現在是每人一組，查詢與新建都要帶 user_id。
+            tag = session.scalar(
+                select(Tag).where(Tag.user_id == uid(), Tag.name == name)
+            )
             if tag is None:
-                tag = Tag(name=name)
+                tag = Tag(user_id=uid(), name=name)
                 session.add(tag)
             if tag not in node.tags:
                 node.tags.append(tag)
             session.commit()
+            sync_node(session, node)
     return redirect(request.referrer or url_for("agenda.index"))
 
 
 @bp.route("/<int:node_id>/tags/<int:tag_id>/remove", methods=["POST"])
+@login_required
 def remove_tag(node_id, tag_id):
     with SessionLocal() as session:
-        node = session.get(Node, node_id)
-        tag = session.get(Tag, tag_id)
-        if node is None or tag is None:
+        node = owned_node(session, node_id)
+        tag = session.scalar(
+            select(Tag).where(Tag.id == tag_id, Tag.user_id == uid())
+        )
+        if tag is None:
             abort(404)
         if tag in node.tags:
             node.tags.remove(tag)
             session.commit()
+            sync_node(session, node)
     return redirect(request.referrer or url_for("agenda.index"))

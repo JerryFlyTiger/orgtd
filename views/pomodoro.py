@@ -3,26 +3,31 @@
 import datetime
 
 from flask import Blueprint, abort, jsonify, render_template, request
+from flask_login import login_required
 from sqlalchemy import select
 
 from constants import POMODORO_KINDS
 from db import SessionLocal
 from models import Node, PomodoroSession
 from queries import count_today_pomodoros, get_settings
+from views._scope import owned_node, uid
 
 bp = Blueprint("pomodoro", __name__, url_prefix="/pomodoro")
 
 
 @bp.route("/")
+@login_required
 def index():
     node_id = request.args.get("node", type=int)
     with SessionLocal() as session:
-        today_count = count_today_pomodoros(session)
+        u = uid()
+        today_count = count_today_pomodoros(session, u)
 
         if node_id is None:
             next_actions = session.scalars(
                 select(Node)
                 .where(
+                    Node.user_id == u,
                     Node.kind == "task",
                     Node.todo_state == "NEXT",
                     Node.archived_at.is_(None),
@@ -33,10 +38,8 @@ def index():
                 "pomodoro_picker.html", next_actions=next_actions, today_count=today_count
             )
 
-        node = session.get(Node, node_id)
-        if node is None or node.kind != "task" or node.archived_at is not None:
-            abort(404)
-        settings = get_settings(session)
+        node = owned_node(session, node_id, kind="task", allow_archived=False)
+        settings = get_settings(session, u)
         return render_template(
             "pomodoro.html", node=node, settings=settings, today_count=today_count
         )
@@ -59,14 +62,13 @@ def _record(completed):
     with SessionLocal() as session:
         node = None
         if kind == "focus" and node_id is not None:
-            node = session.get(Node, node_id)
-            if node is None:
-                abort(404)
+            node = owned_node(session, node_id)
 
         now = datetime.datetime.now(datetime.timezone.utc)
         started_at = now - datetime.timedelta(seconds=actual_seconds)
         session.add(
             PomodoroSession(
+                user_id=uid(),
                 node_id=node.id if node else None,
                 started_at=started_at,
                 ended_at=now,
@@ -81,10 +83,12 @@ def _record(completed):
 
 
 @bp.route("/complete", methods=["POST"])
+@login_required
 def complete():
     return _record(completed=True)
 
 
 @bp.route("/abandon", methods=["POST"])
+@login_required
 def abandon():
     return _record(completed=False)

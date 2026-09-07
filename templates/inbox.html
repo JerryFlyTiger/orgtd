@@ -5,6 +5,7 @@
 <h1>收集箱</h1>
 
 <form method="post" action="{{ url_for('inbox.capture') }}" class="capture-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="text" name="title" placeholder="隨手記下任何想法…" autofocus required>
   <button type="submit">捕捉</button>
 </form>

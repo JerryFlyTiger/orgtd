@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}註冊 — orgtd{% endblock %}
+{% block content %}
+<div class="auth-card">
+  <h1>建立帳號</h1>
+
+  {% if config.GOOGLE_ENABLED %}
+  <a class="oauth-button oauth-google" href="{{ url_for('auth.google_start') }}">
+    使用 Google 帳號註冊
+  </a>
+  <div class="auth-divider"><span>或</span></div>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('auth.register') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label for="email">Email</label>
+    <input id="email" name="email" type="email" value="{{ email }}" required autofocus
+           autocomplete="username">
+
+    <label for="display_name">顯示名稱</label>
+    <input id="display_name" name="display_name" type="text" value="{{ display_name }}"
+           maxlength="80" autocomplete="nickname">
+
+    <label for="password">密碼</label>
+    <input id="password" name="password" type="password" required minlength="12"
+           autocomplete="new-password">
+    <p class="field-hint">至少 12 個字元。長的通行短語比複雜符號更安全也更好記。</p>
+
+    <label for="password_confirm">再輸入一次密碼</label>
+    <input id="password_confirm" name="password_confirm" type="password" required
+           minlength="12" autocomplete="new-password">
+
+    <button type="submit" class="primary-button">註冊</button>
+  </form>
+
+  <p class="auth-alt">已經有帳號了？<a href="{{ url_for('auth.login') }}">登入</a></p>
+</div>
+{% endblock %}

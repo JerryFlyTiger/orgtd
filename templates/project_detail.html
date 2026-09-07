@@ -6,6 +6,7 @@
 <h1>{{ project.title }}</h1>
 
 <form method="post" action="{{ url_for('projects.add_child', project_id=project.id) }}" class="capture-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="text" name="title" placeholder="新增子任務…" required>
   <button type="submit">新增</button>
 </form>

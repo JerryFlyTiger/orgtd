@@ -1,123 +1,367 @@
 # orgtd
 
-GTD × org-mode 風格的個人時間／專案管理系統。純本機單人使用，Flask + PostgreSQL。設計理念與完整架構見 [`PLAN.md`](PLAN.md)。
+GTD × org-mode 的時間與專案管理系統。多人帳號、Google 登入，資料同時
+存在 PostgreSQL 與 **org-mode 純文字檔**——網頁上編輯，也能直接用 Emacs
+或 VSCode 打開同一份檔案。
 
-## 安裝（首次）
+Flask 3 · PostgreSQL 17 · SQLAlchemy 2.0 · Alembic · 37 個測試
+
+---
+
+## 這個專案在解什麼問題
+
+GTD 工具與 org-mode 各有各的好，但通常只能二選一：
+
+- **GTD 的 SaaS 工具**（Todoist、Things）介面好用，但資料鎖在別人的雲端，
+  匯出的格式也不是能拿來編輯的東西。
+- **Emacs org-mode** 資料是自己的純文字，可以版控、可以 grep、二十年後
+  還打得開，但沒有網頁介面，換一台電腦或想在手機上看就很麻煩。
+
+orgtd 讓兩邊同時成立：網頁介面負責日常操作與統計，org 檔負責長期保存
+與跨工具編輯。**同一份資料，兩個入口。**
+
+---
+
+## 三個關鍵設計決策
+
+### 1. org 檔是事實來源，PostgreSQL 是衍生索引
+
+這是整個系統最重要的取捨。
+
+如果反過來（DB 為準、org 檔只是匯出），那麼你在 Emacs 裡的修改下一次同步
+就會被覆蓋掉——「能用 Emacs 編輯」就是假的。所以方向必須是：檔案優先，
+資料庫是它的索引。
+
+Postgres 仍然做它真正擅長的事，這些全是唯讀路徑，不受影響：
+
+| 能力 | 用到的技術 |
+|---|---|
+| outline 大綱樹展開 | `WITH RECURSIVE` CTE，用陣列 path 排序 |
+| 中文子字串搜尋 | `pg_trgm` 三連字 GIN 索引 |
+| agenda 查詢 | 部分索引（`WHERE archived_at IS NULL`），索引體積只含未封存節點 |
+| 連續天數 streak | 窗口函數的 gaps-and-islands 解法 |
+| 番茄鐘統計 | `date_trunc` 聚合 |
+
+> 為什麼中文搜尋不用內建全文檢索：PostgreSQL 的 `to_tsvector` 不斷中文詞，
+> 「專案管理」整串會變成一個 token，搜「專案」找不到。`pg_trgm` 做的是
+> 三個字元一組的模糊比對，不需要詞典就能處理子字串。代價是它比對的是
+> 字形而非語意，要更準得裝 `zhparser`。
+
+### 2. 節點身分靠 org 的 `:ID:` 屬性，不靠標題或行號
+
+每個節點在 org 檔的 `:PROPERTIES:` 抽屜裡帶一個 `:ID:`（就是 Emacs 內建
+`org-id` 的用法）：
+
+```org
+* NEXT [#A] 買咖啡豆                                            :errand:
+  SCHEDULED: <2026-09-08 Tue 09:00 +1w>
+  :PROPERTIES:
+  :ID: 0e4d38e2-3a1f-4c88-9b2e-7f1a5c6d8e90
+  :ORGTD_KIND: task
+  :END:
+```
+
+所以你在 Emacs 裡改標題、搬到別的位置、重新排序，回寫時仍然對得回同一列
+資料——番茄鐘紀錄與提醒設定不會斷掉。這件事有測試守著
+（`test_node_identity_survives_external_edit`）。
+
+沒有 `:ID:` 的節點（你手動打的）會在匯入時自動配發一個。
+
+### 3. 多租戶的 user_id 是必填位置參數，不是預設值
+
+`queries.py` 裡每個函式都長這樣：
+
+```python
+def fetch_agenda(session, user_id):   # 不是 user_id=None
+```
+
+刻意不給預設值、也不從 `current_user` 隱式取用。漏帶時會立刻 `TypeError`
+當掉，而不是安靜地把別人的資料查出來。**跨租戶洩漏應該是會當機的錯誤，
+不能靠人記得加 `where`。**
+
+同理，所有「用 id 取單一物件」的路徑都收斂到 `views/_scope.py` 的
+`owned_node()`，它強制帶擁有者條件。原本單人版直接 `session.get(Node, id)`
+——那在多人環境下是典型的 IDOR，把網址上的 id 換掉就能讀寫別人的東西。
+`tests/test_tenant_isolation.py` 有 11 個測試從 HTTP 層驗證這件事。
+
+---
+
+## 帳號與登入
+
+- **Email + 密碼**：argon2id 雜湊（OWASP 現行首選），最短 12 字元。
+  依 NIST SP 800-63B 的建議，長度優先於「大小寫加符號」那類複雜度規則。
+- **Google 登入**：OAuth 2.0 / OIDC，透過 discovery 文件取得端點。
+- **CSRF**：所有 POST 走 Flask-WTF 的 token 驗證（JSON 請求走 `X-CSRFToken` 標頭）。
+
+兩個刻意的安全處理：
+
+- **帳號枚舉**：「帳號不存在」與「密碼錯誤」回傳完全相同的訊息，IDOR 的
+  404 也不區分「不存在」與「不屬於你」——否則攻擊者能靠回應差異探測。
+- **OAuth 帳號接管**：Google 登入要併進既有的同 email 帳號時，必須
+  `email_verified` 為真才併。否則任何人只要在自己的供應商端填上別人的
+  email，就能接管既有帳號。
+
+### 尚未支援 Apple 與 X 登入
+
+兩者都不是技術問題，是外部成本問題：
+
+- **Sign in with Apple** 需要 Apple Developer Program 會籍，**每年 99 美元**，
+  且不接受 `localhost` 回呼，必須先有已驗證的 HTTPS 網域。
+- **Log in with X** 目前免費層在多數端點限制到 24 小時 1 次請求。登入流程
+  結束後必須呼叫 `GET /2/users/me` 才能識別使用者，等於第二個人登入就會失敗。
+  實務上要 Basic 層，**每月 200 美元**。
+
+程式碼的 `oauth_accounts` 表用 `(provider, provider_user_id)` 當唯一鍵，
+再加供應商只是多一組設定與一個 callback，不必改結構。
+
+---
+
+## org 資料夾
+
+每位使用者一個資料夾，裡面是 org-mode GTD 社群慣例的檔案配置：
+
+```
+~/org/                  ← 建議路徑（見下方說明）
+├── inbox.org           收集箱
+├── projects.org        專案（含底下的任務子樹）
+├── notes.org           筆記
+├── someday.org         將來也許
+├── archive.org         已封存
+└── .orgtd/             同步指紋，Emacs 不會誤收（點開頭）
+```
+
+**為什麼建議叫 `~/org`**：這是 Emacs 變數 `org-directory` 的預設值，
+`org-agenda-files` 的慣例也指向那裡。用這個名字，Emacs 使用者的既有設定
+不用改就吃得到。設定頁可以改成別的路徑。
+
+### 在 Emacs 裡用
+
+```elisp
+(setq org-directory "~/org")
+(setq org-agenda-files (directory-files-recursively "~/org" "\\.org$"))
+```
+
+`C-c a` 就會看到 orgtd 產生的所有排程與截止項目。
+
+### 在 VSCode 裡用
+
+裝 [Org Mode 擴充套件](https://marketplace.visualstudio.com/items?itemName=vscode-org-mode.org-mode)，
+直接開資料夾即可。沒裝擴充也能當純文字編輯，格式不會壞。
+
+### 兩邊改動怎麼合
+
+同步指紋存在 `.orgtd/state.json`。設定頁有兩個按鈕：
+
+- **從檔案匯入**：偵測到外部改動時，以檔案內容為準回寫資料庫
+- **重新產生檔案**：以資料庫為準重寫 org 檔
+
+也可以走指令列：
 
 ```sh
-# 1. 安裝 PostgreSQL 17 與 Python 3.12（本專案用的版本，比系統內建的 Python 3.9 新）
+.venv/bin/python manage.py import your@email.com
+.venv/bin/python manage.py export your@email.com
+```
+
+檔案裡消失的節點會被**封存**而不是硬刪——手滑刪掉一段還救得回來。
+
+### 遠端使用者的資料夾在哪
+
+這點值得講清楚：如果你把 orgtd 架在一台伺服器上給別人用，那些 org 檔是在
+**伺服器的磁碟上**，遠端使用者沒辦法用自己電腦的 Emacs 直接打開。所以：
+
+- **自架單人**（`ORGTD_ALLOW_CUSTOM_ORG_DIR=1`）：資料夾就在你自己的機器上，
+  設成 `~/org`，Emacs 直接開，這是完整體驗。
+- **對外多人站台**（設 `0`）：資料夾由系統配置在 `<ORG_ROOT>/<uuid>/`，
+  使用者透過設定頁的 **下載 .zip** 取得檔案。
+
+多人站台**不開放**使用者自填路徑，因為那填的是伺服器上的路徑，等同讓任何
+註冊者對伺服器檔案系統任意寫入。這個限制在程式裡是硬性的，不只是介面上藏起來。
+
+---
+
+## 安裝
+
+```sh
+# 1. 系統依賴
 brew install postgresql@17 python@3.12
 brew services start postgresql@17
-
-# 2. 把 PostgreSQL 的指令加進 PATH（psql / createdb），可加進 ~/.zshrc 永久生效
 export PATH="/opt/homebrew/opt/postgresql@17/bin:$PATH"
 
-# 3. 建立資料庫（Homebrew 版直接用你的 macOS 帳號當 superuser，免密碼）
+# 2. 資料庫
 createdb orgtd
 
-# 4. 建立虛擬環境並安裝依賴
+# 3. Python 環境
 cd ~/My_Projects/orgtd
 /opt/homebrew/bin/python3.12 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 
-# 5. 建表（跑資料庫遷移）
+# 4. 設定檔
+cp .env.example .env
+python3 -c "import secrets; print(secrets.token_hex(32))"   # 貼進 ORGTD_SECRET_KEY
+
+# 5. 建表
 .venv/bin/alembic upgrade head
+
+# 6. 建第一個帳號
+.venv/bin/python manage.py create-user your@email.com "你的名字"
 ```
+
+### 設定項目
+
+`.env`（已列入 `.gitignore`，不會進版控）：
+
+| 變數 | 說明 |
+|---|---|
+| `ORGTD_SECRET_KEY` | **必填**。session 簽章密鑰，沒設定且非 debug 模式會直接拒絕啟動 |
+| `ORGTD_DATABASE_URL` | 連線字串 |
+| `ORGTD_DEBUG` | 預設 `0`。對外部署務必保持關閉 |
+| `ORGTD_ORG_ROOT` | org 資料夾根目錄，預設 `~/orgtd-data` |
+| `ORGTD_ALLOW_CUSTOM_ORG_DIR` | 自架單人設 `1`，對外站台設 `0` |
+| `ORGTD_ALLOW_REGISTRATION` | 是否開放註冊 |
+| `ORGTD_GOOGLE_CLIENT_ID` / `_SECRET` | 留空則不顯示 Google 按鈕 |
+| `ORGTD_NOTIFY_EMAIL` | 桌面提醒發給誰，留空取最早建立的帳號 |
+
+### 設定 Google 登入
+
+1. [Google Cloud Console](https://console.cloud.google.com/) → 建專案
+2. API 和服務 → 憑證 → 建立 OAuth 用戶端 ID → 網頁應用程式
+3. 「已授權的重新導向 URI」填：
+   - 本機開發 `http://localhost:5001/auth/google/callback`
+   - 正式環境 `https://你的網域/auth/google/callback`
+4. 把用戶端 ID 與密鑰填進 `.env`
+
+Google 允許 `localhost` 作為開發用回呼，所以本機就能完整測完整個流程。
+
+---
 
 ## 啟動
 
 ```sh
-.venv/bin/python app.py
+# 開發
+.venv/bin/python app.py            # http://127.0.0.1:5001
+
+# 正式（gunicorn，不是 Flask 內建伺服器）
+.venv/bin/gunicorn -w 4 -b 127.0.0.1:5001 "app:create_app()"
 ```
 
-開瀏覽器 <http://127.0.0.1:5001>。
+Flask 內建的 Werkzeug 伺服器是單執行緒開發用的，而且 `debug=True` 時它的
+除錯器允許在瀏覽器裡執行任意 Python——對外開一個 port 就是完整的遠端執行
+漏洞。這個專案的 debug 現在由 `ORGTD_DEBUG` 控制，**預設關閉**。
 
-> `debug=True` 僅供本機開發使用，請勿對外開放。
+### 用雙擊圖示啟動
 
-### 用雙擊圖示啟動（不用開 Terminal）
+`gui/` 有三個 AppleScript 編譯的 `.app`（啟動／關閉／開網頁），可拖到 Dock。
+用 `gui/build.sh` 從 `.applescript` 原始碼重新編譯（`osacompile` 是 macOS 內建，
+不用額外裝東西）。
 
-`gui/` 資料夾裡有三個編譯好的 `.app`，可以直接拖到 Desktop 或 Dock：
+雙擊啟動會設 `ORGTD_NO_RELOAD=1` 關掉 reloader，讓伺服器只有單一 process
+——reloader 會多 fork 一個子行程，只殺父行程會殘留子行程繼續佔用 port。
 
-- **「啟動 orgtd.app」**：雙擊啟動伺服器（背景執行，不會跳出 Terminal 視窗），成功/失敗都會用系統通知或對話框告知。已經在跑時會友善提示，不會重複啟動；如果 5001 port 被別的程式占用會提示衝突，不會誤殺陌生程式。
-- **「關閉 orgtd.app」**：雙擊乾淨關閉伺服器。本來就沒在跑時會友善提示而非報錯。
-- **「開啟 orgtd 網頁.app」**：雙擊用預設瀏覽器開啟 <http://127.0.0.1:5001>。
+---
 
-這三個 `.app` 是用 `gui/build.sh` 從對應的 `.applescript` 原始碼編譯出來的（`osacompile`，macOS 內建工具，不需要額外安裝任何東西）。改了 `.applescript` 之後重跑 `gui/build.sh` 就會重新編譯。
-
-技術細節：雙擊啟動時會自動設定 `ORGTD_NO_RELOAD=1` 環境變數關掉 Flask 的 reloader，讓伺服器只有單一 process（方便乾淨追蹤與關閉）；手動用 Terminal 跑 `.venv/bin/python app.py`（不設這個環境變數）行為完全不變，reloader 照常開著方便開發除錯。行程 PID 與啟動 log 分別存在 `run/orgtd.pid`、`run/server.log`（不進版控）。
-
-## 資料庫小白話（給沒碰過 ORM 的人）
-
-- **SQLAlchemy** 是 Python 的 ORM（物件關聯對映）：讓你用 Python class（`models.py` 裡的 `Node`、`Tag` 等）操作資料庫的表，不用手寫大部分 SQL。
-- **Session** 是一次「跟資料庫對話」的單位：開一個 session、查詢/新增/修改資料、`commit()` 確認寫入、關閉。本專案在每個 view 函式裡用 `with SessionLocal() as session:` 開關，一個請求一個 session。
-- **Migration（遷移）** 是資料庫表結構的版本控制：`models.py` 改了欄位後，用 `alembic revision --autogenerate -m "說明"` 產生一份「怎麼把舊表改成新表」的腳本，再用 `alembic upgrade head` 實際套用到資料庫。這樣資料庫結構的每次變動都有紀錄、可回溯。
-
-## 常用指令
+## 測試
 
 ```sh
-# 改了 models.py 後，產生新的 migration
-.venv/bin/alembic revision --autogenerate -m "說明這次改了什麼"
-.venv/bin/alembic upgrade head
-
-# 直接查資料庫（練習 SQL 很方便）
-psql -d orgtd
+createdb orgtd_test
+ORGTD_DATABASE_URL="postgresql+psycopg://$(whoami)@localhost:5432/orgtd_test" \
+  .venv/bin/alembic upgrade head
+ORGTD_DATABASE_URL="postgresql+psycopg://$(whoami)@localhost:5432/orgtd_test" \
+  .venv/bin/python -m pytest tests/ -q
 ```
 
-在 `psql` 裡可以練習的查詢範例：
+37 個測試，分四組：
 
-```sql
--- 看目前所有節點
-SELECT id, kind, title, todo_state FROM nodes ORDER BY id;
+| 檔案 | 守的是什麼 |
+|---|---|
+| `test_tenant_isolation.py` | 11 項。B 使用者讀不到也改不到 A 的任何東西 |
+| `test_org_roundtrip.py` | 9 項。org 解析／輸出無損，含中文標題、標籤、重複規則 |
+| `test_org_sync.py` | 9 項。外部編輯真的能回寫，且節點身分不斷 |
+| `test_auth.py` / `test_csrf.py` | 8 項。登入、存取控制、CSRF |
 
--- 看某個節點底下的子樹（outline 大綱）
-WITH RECURSIVE tree AS (
-  SELECT id, parent_id, title, position, 1 AS depth, ARRAY[position] AS path
-  FROM nodes WHERE id = 1
-  UNION ALL
-  SELECT n.id, n.parent_id, n.title, n.position, t.depth + 1, t.path || n.position
-  FROM nodes n JOIN tree t ON n.parent_id = t.id
-)
-SELECT * FROM tree ORDER BY path, id;
-```
+幾個測試是回歸測試，對應開發時真的踩到的坑：
 
-## 提醒事項
+- `test_title_without_state_is_not_swallowed`——標題「TODOs 清單整理」
+  不可被誤判成 TODO 狀態
+- `test_custom_dir_rejects_dangerous_paths`——macOS 的 `/etc` 是
+  `/private/etc` 的符號連結，早先用字面前綴比對的黑名單會被繞過，
+  後來改成「必須在家目錄內」的正面表列
+- `test_emacs_style_localised_daynames_parse`——Emacs 依語系會把星期寫成
+  「週一」，解析器不能假設是英文縮寫
 
-任務卡片上可以設定「提醒時間」與「重複」（不重複／每天／每週／每月）。提醒有兩層機制：
+---
 
-1. **網頁開著時**：Agenda 頁（`/agenda`）每 60 秒自動查一次到期提醒，用瀏覽器桌面通知跳出。第一次使用要點頁面上的「啟用通知」按鈕允許權限。
-2. **網頁關著時（推薦，才是真正可靠的提醒）**：`notifier.py` 是一支獨立腳本，直接查資料庫、用 macOS 原生通知跳出，不需要瀏覽器開著。搭配 launchd 排程每分鐘執行一次：
+## 提醒
+
+兩層機制：
+
+1. **網頁開著**：Agenda 頁每 60 秒輪詢，瀏覽器桌面通知
+2. **網頁關著**：`notifier.py` 由 launchd 每分鐘跑一次，走 macOS 原生通知
 
 ```sh
-# 把 plist 複製到 LaunchAgents 並載入（一次性設定，之後開機自動生效）
 cp launchd/com.orgtd.notifier.plist ~/Library/LaunchAgents/
 launchctl load ~/Library/LaunchAgents/com.orgtd.notifier.plist
-
-# 要停用時
-launchctl unload ~/Library/LaunchAgents/com.orgtd.notifier.plist
-rm ~/Library/LaunchAgents/com.orgtd.notifier.plist
-
-# 手動測試腳本本身有沒有作用（不透過 launchd）
-.venv/bin/python notifier.py
 ```
 
-`launchd/notifier.log` / `launchd/notifier.err.log` 可查執行紀錄。這支腳本需要 PostgreSQL 一直在跑（`brew services start postgresql@17` 已經是開機自動啟動的背景服務）。
+兩邊共用「取出即標記已通知」的邏輯，誰先查到就算數，不會重複通知。
 
-重複任務完成時不會真的關閉，而是把排程/截止日往後推一輪、狀態留在 NEXT（org-mode 的重複任務精神），適合「每週回顧」「每月繳費」這類週期性事項。
+> 桌面通知只對坐在這台機器前面的人有意義，所以 `notifier.py` 預設只處理
+> 機器主人自己的提醒。改成掃全站會把其他使用者的任務標題彈到主人桌面上
+> ——那是資料外洩。
 
-## 中文搜尋的限制
+重複任務（`+1d` / `+1w` / `+1m`）完成時不會關閉，而是把排程與截止日往後推
+一輪、狀態留回 NEXT，這是 org-mode 重複任務的語意。
 
-PostgreSQL 內建的全文搜尋（`to_tsvector`）不會斷中文詞，本專案用 `pg_trgm`（三元組模糊比對）做中文子字串搜尋，不是真正的語意斷詞。若未來想要更準的中文搜尋，可以研究安裝 `zhparser` 擴充套件。
+---
 
-## 目前進度
+## 管理指令
 
-- [x] M0 骨架：專案結構、資料庫 schema（全部 model 一次建表）、Inbox 收集箱最小版、錯誤頁
-- [x] M1 最小閉環：clarify（任務/筆記/將來也許）、Agenda（逾期／今日排程／NEXT 行動）、TODO 狀態機切換
-- [x] M2 Projects + 標籤 + outline 樹：專案清單/詳情、遞迴 CTE 子樹、新增子任務、跨專案搬移（含循環防護）、卡點偵測（無 NEXT 行動標紅）、標籤新增/移除
-- [x] M3 Calendar：月曆格檢視、白名單 year/month 驗證（非法月份 404）、SCHEDULED/DEADLINE 落格、跨年翻頁
-- [x] M3.5 提醒：任務可設提醒時間與重複規則（每天/每週/每月）；Agenda 頁輪詢 + 桌面通知（頁面開著時）；`notifier.py` + launchd 每分鐘跑一次（頁面關著也能提醒，尚未啟用，見上方「提醒事項」段落自行 `launchctl load`）；重複任務完成時往後推一輪而非真的關閉
-- [x] M4 Pomodoro：計時器頁（`pomodoro.js`，唯一即時互動 JS）綁定任務節點、完成/放棄記錄進 `pomodoro_sessions`、今日番茄數、專注→短休息/長休息自動輪替（每 4 顆長休息）
-- [x] M5 Notes + 搜尋：筆記清單/詳情/編輯、pg_trgm 中文子字串模糊搜尋（標題+內文）、封存
-- [x] M6 Weekly Review wizard：8 步引導式週回顧（清空收集箱/NEXT/WAITING/專案卡點偵測/Someday/未來一週行事曆/本週番茄統計/自由反思）、JSONB checklist 進度追蹤、以週一為單位、完成頁
-- [x] M7 Dashboard：連續天數 streak（窗口函數 gaps-and-islands）、本週番茄聚合與專案時間分布、GTD 系統健康度總覽（收集箱/NEXT/WAITING/Someday/卡住的專案）、nav 徽章全面接上（收集箱/今日待辦/本週番茄）
+```sh
+.venv/bin/python manage.py list-users
+.venv/bin/python manage.py create-user <email> [顯示名稱]
+.venv/bin/python manage.py set-password <email>
+.venv/bin/python manage.py export <email>     # DB → org 檔
+.venv/bin/python manage.py import <email>     # org 檔 → DB
+```
 
-**全部 8 個里程碑（M0–M7）已完成。** `orgtd` 現在是一套完整可日用的本機 GTD × org-mode 系統。
+---
+
+## 資料模型
+
+一切皆節點。`nodes` 一張表用 `kind` 區分 inbox / project / task / note /
+someday，`parent_id` 自關聯構成 outline 大綱樹。
+
+GTD 的 clarify 動作因此只是一次 `UPDATE kind, parent_id, todo_state`，
+不用搬表——這對應 GTD 流程本身的流動性：一個收集箱項目可能變成任務、
+變成專案、變成參考資料，或者直接丟掉。
+
+多租戶改造時修掉的兩個地雷（原本是單人設計）：
+
+- `tags.name` 原本全域唯一 → 第二個人建同名標籤會失敗
+- `weekly_reviews.week_start` 原本全域唯一 → 第二個人做同一週的回顧會撞主鍵
+
+兩者都改成 `(user_id, X)` 的複合唯一鍵，各有一個測試守著。
+
+完整設計理念見 [`PLAN.md`](PLAN.md)。
+
+---
+
+## 專案結構
+
+```
+app.py            應用工廠、blueprint 註冊、CSRF 與登入初始化
+config.py         環境變數集中處，程式碼裡不寫死任何密鑰
+db.py             engine / session / Base
+models.py         SQLAlchemy 模型與索引定義
+queries.py        跨 view 共用的進階查詢（全部強制帶 user_id）
+security.py       argon2 密碼雜湊、Flask-Login 設定
+orgfiles.py       org 純文字的解析與輸出、資料夾管理
+orgsync.py        DB ⇄ org 檔的雙向同步引擎
+manage.py         管理指令列
+views/            9 個功能 blueprint + auth + settings + _scope 取用輔助
+templates/        Jinja2 模板
+static/           CSS 與兩支 JS（番茄鐘計時、提醒輪詢）
+migrations/       Alembic 遷移
+tests/            37 個測試
+launchd/          提醒排程的 plist
+gui/              macOS 雙擊啟動的 AppleScript
+```

@@ -12,3 +12,6 @@ run/
 
 # AppleScript 編譯出的 .app bundle（由 gui/build.sh 產生）
 gui/*.app
+
+# 密鑰與本機設定
+.env

@@ -98,6 +98,7 @@
 
 {% elif n == 8 %}
   <form method="post" action="{{ url_for('review.complete_step', n=n) }}" class="note-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <textarea name="reflection" rows="8" placeholder="這週過得如何？有什麼值得記下的？">{{ review.reflection or "" }}</textarea>
     <button type="submit">完成本次回顧</button>
   </form>
@@ -105,6 +106,7 @@
 
 {% if n < steps|length %}
 <form method="post" action="{{ url_for('review.complete_step', n=n) }}" class="review-nav-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <button type="submit">標記完成，前往下一步 →</button>
 </form>
 {% endif %}

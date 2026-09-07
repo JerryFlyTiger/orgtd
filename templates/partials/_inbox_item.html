@@ -2,6 +2,7 @@
 <div class="card inbox-item">
   <p class="inbox-title">{{ item.title }}</p>
   <form method="post" action="{{ url_for('inbox.clarify', node_id=item.id) }}" class="clarify-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label>
       分類
       <select name="kind">
@@ -16,6 +17,7 @@
     <button type="submit">確認分類</button>
   </form>
   <form method="post" action="{{ url_for('inbox.discard', node_id=item.id) }}" class="discard-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button type="submit">丟棄</button>
   </form>
 </div>

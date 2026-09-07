@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}登入 — orgtd{% endblock %}
+{% block content %}
+<div class="auth-card">
+  <h1>登入</h1>
+
+  {% if config.GOOGLE_ENABLED %}
+  <a class="oauth-button oauth-google" href="{{ url_for('auth.google_start') }}">
+    使用 Google 帳號登入
+  </a>
+  <div class="auth-divider"><span>或</span></div>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('auth.login') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label for="email">Email</label>
+    <input id="email" name="email" type="email" value="{{ email }}" required autofocus
+           autocomplete="username">
+
+    <label for="password">密碼</label>
+    <input id="password" name="password" type="password" required
+           autocomplete="current-password">
+
+    <button type="submit" class="primary-button">登入</button>
+  </form>
+
+  {% if config.ALLOW_REGISTRATION %}
+  <p class="auth-alt">還沒有帳號？<a href="{{ url_for('auth.register') }}">註冊一個</a></p>
+  {% endif %}
+</div>
+{% endblock %}

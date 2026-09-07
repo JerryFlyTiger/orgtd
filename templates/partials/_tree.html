@@ -14,6 +14,7 @@
       {% for state in ["NEXT", "WAITING", "DONE"] %}
         {% if state != node.todo_state %}
         <form method="post" action="{{ url_for('nodes.set_state', node_id=node.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="state" value="{{ state }}">
           <button type="submit">{{ state }}</button>
         </form>
@@ -21,6 +22,7 @@
       {% endfor %}
       {% if other_projects %}
       <form method="post" action="{{ url_for('nodes.move', node_id=node.id) }}" class="move-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <select name="target_project_id">
           <option value="">搬移到…</option>
           {% for p in other_projects %}

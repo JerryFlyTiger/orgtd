@@ -49,7 +49,11 @@
   function postRecord(completed, plannedMinutes, actualSeconds) {
     fetch(completed ? "/pomodoro/complete" : "/pomodoro/abandon", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        // CSRFProtect 會擋掉沒帶 token 的 POST；JSON 請求走這個標頭而非表單欄位。
+        "X-CSRFToken": (document.querySelector('meta[name="csrf-token"]') || {}).content || "",
+      },
       body: JSON.stringify({
         node_id: phase === "focus" ? nodeId : null,
         kind: phase,
