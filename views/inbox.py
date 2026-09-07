@@ -8,7 +8,6 @@ from sqlalchemy import select
 
 from db import SessionLocal
 from models import Node
-from orgsync import sync_node
 from views._scope import owned_node, uid
 
 bp = Blueprint("inbox", __name__)
@@ -41,7 +40,6 @@ def capture():
             node = Node(user_id=uid(), kind="inbox", title=title)
             session.add(node)
             session.commit()
-            sync_node(session, node)
     return redirect(url_for("inbox.index"))
 
 
@@ -67,7 +65,6 @@ def clarify(node_id):
             node.scheduled_at = _parse_date(request.form.get("scheduled_at"))
             node.deadline_at = _parse_date(request.form.get("deadline_at"))
         session.commit()
-        sync_node(session, node)
     return redirect(url_for("inbox.index"))
 
 
@@ -78,5 +75,4 @@ def discard(node_id):
         node = owned_node(session, node_id, kind="inbox")
         node.archived_at = datetime.datetime.now(datetime.timezone.utc)
         session.commit()
-        sync_node(session, node)
     return redirect(url_for("inbox.index"))

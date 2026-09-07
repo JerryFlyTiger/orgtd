@@ -16,63 +16,36 @@
 </section>
 
 <section class="card">
-  <h2>org 檔資料夾</h2>
+  <h2>匯出 org 檔</h2>
   <p class="muted">
-    這個系統的資料同時存在資料庫與 org 純文字檔。<strong>org 檔是事實來源</strong>——
-    你在 Emacs 或 VSCode 裡改了什麼，按下面的「從檔案匯入」就會回寫進來。
+    把你的資料匯出成 org-mode 純文字檔，下載到自己電腦上用
+    <strong>Emacs</strong> 或 <strong>VSCode</strong> 打開。檔案是即時產生的，
+    伺服器不留副本。這是單向匯出——在編輯器裡的改動不會回寫到這裡。
   </p>
 
   <table class="settings-table">
-    <tr><th>資料夾路徑</th><td><code>{{ org.root }}</code></td></tr>
-    <tr><th>狀態</th>
-        <td>{% if org.exists %}已建立，共 {{ org.total_bytes }} 位元組{% else %}<span class="warn-text">尚未建立</span>{% endif %}</td></tr>
-  </table>
-
-  <table class="settings-table">
-    <thead><tr><th>檔案</th><th>節點數</th><th>大小</th></tr></thead>
+    <thead><tr><th>檔案</th><th>節點數</th><th>大小</th><th></th></tr></thead>
     <tbody>
-      {% for f in org.files %}
+      {% for f in org_files %}
       <tr>
-        <td><code>{{ f.name }}</code>{% if f.name in org.changed %}
-          <span class="pill pill-warn">外部已修改</span>{% endif %}</td>
+        <td><code>{{ f.name }}</code></td>
         <td>{{ f.headlines }}</td>
-        <td>{{ f.size }}</td>
+        <td>{{ f.size }} bytes</td>
+        <td><a href="{{ url_for('settings.export_one', filename=f.name) }}">下載</a></td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
 
-  {% if org.editable %}
-  <form method="post" action="{{ url_for('settings.set_org_directory') }}" class="stacked-form">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label for="org_directory">自訂資料夾路徑（絕對路徑）</label>
-    <input id="org_directory" name="org_directory" type="text"
-           value="{{ user.org_directory or '' }}" placeholder="~/org">
-    <p class="field-hint">
-      建議用 <code>~/org</code>——這是 Emacs <code>org-directory</code> 的預設值，
-      設成這裡的話 <code>org-agenda-files</code> 不用改設定就能吃到。
-    </p>
-    <button type="submit">設定並產生檔案</button>
-  </form>
-  {% else %}
-  <p class="field-hint">
-    這個站台由管理員統一配置資料夾位置，不開放自訂路徑
-    （使用者填的會是「伺服器上」的路徑，開放等同任意檔案寫入）。
-    要在自己電腦上編輯，用下面的下載功能。
-  </p>
-  {% endif %}
-
   <div class="button-row">
-    <form method="post" action="{{ url_for('settings.import_from_files') }}" class="inline-form">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit">從檔案匯入（Emacs 改動 → 網頁）</button>
-    </form>
-    <form method="post" action="{{ url_for('settings.export_to_files') }}" class="inline-form">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit">重新產生檔案（網頁 → 檔案）</button>
-    </form>
-    <a class="button-link" href="{{ url_for('settings.download_zip') }}">下載 .zip</a>
+    <a class="button-link" href="{{ url_for('settings.export_zip') }}">全部下載（.zip）</a>
   </div>
+
+  <p class="field-hint">
+    在 Emacs 裡把解壓後的資料夾接上 org-agenda：<br>
+    <code>(setq org-agenda-files (directory-files-recursively "~/org" "\\.org$"))</code><br>
+    VSCode 則安裝 Org Mode 擴充套件後直接開資料夾；沒裝擴充當純文字讀也不會亂。
+  </p>
 </section>
 
 <section class="card">

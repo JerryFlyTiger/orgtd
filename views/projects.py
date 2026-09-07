@@ -5,7 +5,6 @@ from flask_login import login_required
 
 from db import SessionLocal
 from models import Node
-from orgsync import sync_node
 from queries import fetch_subtree, has_next_action, list_projects
 from views._scope import owned_node, uid
 
@@ -54,5 +53,4 @@ def add_child(project_id):
             )
             session.add(node)
             session.commit()
-            sync_node(session, node)
     return redirect(url_for("projects.detail", project_id=project_id))

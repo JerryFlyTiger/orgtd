@@ -1,10 +1,10 @@
-"""設定頁：個人資料、番茄鐘參數、org 資料夾位置與同步。"""
+"""設定頁：個人資料、番茄鐘參數、密碼，以及 org 檔匯出。"""
 
-import pathlib
-import tempfile
+import io
 
 from flask import (
     Blueprint,
+    abort,
     flash,
     redirect,
     render_template,
@@ -12,12 +12,9 @@ from flask import (
     send_file,
     url_for,
 )
-from flask_login import current_user, login_required
-from sqlalchemy import select
+from flask_login import login_required
 
-import config
 import orgfiles
-import orgsync
 from db import SessionLocal
 from models import User
 from queries import get_settings, save_settings
@@ -34,45 +31,25 @@ _POMODORO_FIELDS = {
 }
 
 
-def _org_status(user):
-    """org 資料夾現況：路徑、每個檔案的大小與行數、是否有外部改動。"""
-    root = orgfiles.user_org_dir(user)
-    files = []
-    for name in orgfiles.ORG_FILES:
-        path = root / name
-        if path.exists():
-            text = path.read_text(encoding="utf-8")
-            files.append(
-                {
-                    "name": name,
-                    "size": path.stat().st_size,
-                    "headlines": sum(1 for ln in text.split("\n") if ln.startswith("*")),
-                    "mtime": path.stat().st_mtime,
-                }
-            )
-        else:
-            files.append({"name": name, "size": 0, "headlines": 0, "mtime": None})
-    return {
-        "root": str(root),
-        "exists": root.exists(),
-        "files": files,
-        "total_bytes": orgfiles.dir_size_bytes(root),
-        "changed": orgsync.externally_changed(user) if root.exists() else [],
-        "editable": config.ALLOW_CUSTOM_ORG_DIR,
-    }
-
-
 @bp.route("/")
 @login_required
 def index():
     with SessionLocal() as session:
         user = session.get(User, uid())
+        files = orgfiles.build_export(session, user.id)
         return render_template(
             "settings.html",
             user=user,
             pomodoro=get_settings(session, user.id),
-            org=_org_status(user),
             has_password=bool(user.password_hash),
+            org_files=[
+                {
+                    "name": name,
+                    "headlines": orgfiles.count_headlines(text),
+                    "size": len(text.encode("utf-8")),
+                }
+                for name, text in files.items()
+            ],
         )
 
 
@@ -133,72 +110,35 @@ def change_password():
 
 
 # --------------------------------------------------------------------------
-# org 資料夾
+# org 檔匯出（單向，伺服器不留檔）
 # --------------------------------------------------------------------------
 
 
-@bp.post("/org/directory")
+@bp.get("/export.zip")
 @login_required
-def set_org_directory():
-    if not config.ALLOW_CUSTOM_ORG_DIR:
-        # 對外站台不接受使用者指定伺服器路徑——那等同任意檔案寫入。
-        flash("這個站台不開放自訂資料夾路徑。", "warn")
-        return redirect(url_for("settings.index"))
-
-    path, error = orgfiles.validate_custom_dir(request.form.get("org_directory") or "")
-    if error:
-        flash(error, "warn")
-        return redirect(url_for("settings.index"))
-
+def export_zip():
     with SessionLocal() as session:
-        user = session.get(User, uid())
-        user.org_directory = str(path)
-        session.commit()
-        orgfiles.provision_user_directory(user)
-        orgsync.rebuild_all(session, user)
-    flash(f"org 資料夾已設為 {path}，檔案已產生。", "ok")
-    return redirect(url_for("settings.index"))
+        files = orgfiles.build_export(session, uid())
+    return send_file(
+        io.BytesIO(orgfiles.make_zip(files)),
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name="orgtd-org.zip",
+    )
 
 
-@bp.post("/org/export")
+@bp.get("/export/<filename>")
 @login_required
-def export_to_files():
-    """以 DB 為準，重新產生所有 org 檔。"""
+def export_one(filename):
+    # 白名單比對而非路徑組合：使用者給的字串永遠不拿去拼路徑，
+    # 從根本上沒有 ../ 穿越的餘地。
+    if filename not in orgfiles.ORG_FILES:
+        abort(404)
     with SessionLocal() as session:
-        user = session.get(User, uid())
-        orgsync.rebuild_all(session, user)
-    flash("已依資料庫內容重新產生 org 檔。", "ok")
-    return redirect(url_for("settings.index"))
-
-
-@bp.post("/org/import")
-@login_required
-def import_from_files():
-    """以 org 檔為準，把外部（Emacs / VSCode）的改動吃回資料庫。"""
-    with SessionLocal() as session:
-        user = session.get(User, uid())
-        stats = orgsync.import_changed(session, user)
-    if stats["files"]:
-        flash(
-            f"已從 {'、'.join(stats['files'])} 匯入："
-            f"新增 {stats['created']}、更新 {stats['updated']}、封存 {stats['archived']}。",
-            "ok",
-        )
-    else:
-        flash("沒有偵測到外部改動。", "ok")
-    return redirect(url_for("settings.index"))
-
-
-@bp.get("/org/download")
-@login_required
-def download_zip():
-    """打包下載，讓使用者拿到自己電腦上用 Emacs / VSCode 開。"""
-    with SessionLocal() as session:
-        user = session.get(User, uid())
-        root = orgfiles.user_org_dir(user)
-        if not root.exists():
-            flash("org 資料夾尚未建立。", "warn")
-            return redirect(url_for("settings.index"))
-        tmp = pathlib.Path(tempfile.mkdtemp())
-        archive = orgfiles.make_zip(root, tmp, "orgtd-org")
-    return send_file(archive, as_attachment=True, download_name="orgtd-org.zip")
+        files = orgfiles.build_export(session, uid())
+    return send_file(
+        io.BytesIO(files[filename].encode("utf-8")),
+        mimetype="text/plain; charset=utf-8",
+        as_attachment=True,
+        download_name=filename,
+    )

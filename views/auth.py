@@ -21,7 +21,6 @@ from sqlalchemy import select
 
 from db import SessionLocal
 from models import User
-from orgfiles import provision_user_directory
 from security import hash_password, needs_rehash, verify_password
 
 bp = Blueprint("auth", __name__)
@@ -48,7 +47,6 @@ def _create_user(session, *, email, display_name, password):
     )
     session.add(user)
     session.flush()  # 取得 user.id / user.uuid
-    provision_user_directory(user)
     return user
 
 
@@ -89,7 +87,7 @@ def register():
                         session, email=email, display_name=name or email, password=pw
                     )
                     _finish_login(session, user)
-                    flash("註冊完成，已為你建立 org 資料夾。", "ok")
+                    flash("註冊完成。", "ok")
                     return redirect(url_for("settings.index"))
 
         for e in errors:

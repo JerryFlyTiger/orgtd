@@ -10,7 +10,6 @@ from sqlalchemy import func, select
 from constants import REPEAT_RULES, TODO_STATES
 from db import SessionLocal
 from models import Node, Tag
-from orgsync import sync_node
 from queries import is_descendant
 from views._scope import owned_node, uid
 
@@ -55,7 +54,6 @@ def set_state(node_id):
                 datetime.datetime.now(datetime.timezone.utc) if state == "DONE" else None
             )
         session.commit()
-        sync_node(session, node)
     return redirect(request.referrer or url_for("agenda.index"))
 
 
@@ -72,7 +70,6 @@ def set_reminder(node_id):
         node.notified_at = None
         node.repeat_rule = repeat_rule
         session.commit()
-        sync_node(session, node)
     return redirect(request.referrer or url_for("agenda.index"))
 
 
@@ -87,10 +84,6 @@ def move(node_id):
         if is_descendant(session, uid(), target.id, node.id):
             # 目標是自己的子孫，搬過去會形成循環，拒絕。
             abort(404)
-        old_file = None
-        from orgsync import file_for
-
-        old_file = file_for(session, node)
         max_position = session.scalar(
             select(func.coalesce(func.max(Node.position), -1)).where(
                 Node.user_id == uid(), Node.parent_id == target.id
@@ -99,14 +92,6 @@ def move(node_id):
         node.parent_id = target.id
         node.position = max_position + 1
         session.commit()
-        # 搬家可能跨檔（例如收集箱 → 專案），來源與目標兩個檔都要重寫。
-        sync_node(session, node)
-        if file_for(session, node) != old_file:
-            from models import User
-
-            from orgsync import rebuild_file
-
-            rebuild_file(session, session.get(User, uid()), old_file)
     return redirect(request.referrer or url_for("projects.index"))
 
 
@@ -114,17 +99,9 @@ def move(node_id):
 @login_required
 def archive(node_id):
     with SessionLocal() as session:
-        from models import User
-
-        from orgsync import file_for, rebuild_file
-
         node = owned_node(session, node_id)
-        old_file = file_for(session, node)
         node.archived_at = datetime.datetime.now(datetime.timezone.utc)
         session.commit()
-        # 封存會讓節點換到 archive.org，原檔也要重寫才不會留下殘影。
-        sync_node(session, node)
-        rebuild_file(session, session.get(User, uid()), old_file)
     return redirect(request.referrer or url_for("agenda.index"))
 
 
@@ -145,7 +122,6 @@ def add_tag(node_id):
             if tag not in node.tags:
                 node.tags.append(tag)
             session.commit()
-            sync_node(session, node)
     return redirect(request.referrer or url_for("agenda.index"))
 
 
@@ -162,5 +138,4 @@ def remove_tag(node_id, tag_id):
         if tag in node.tags:
             node.tags.remove(tag)
             session.commit()
-            sync_node(session, node)
     return redirect(request.referrer or url_for("agenda.index"))

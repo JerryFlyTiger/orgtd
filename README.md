@@ -1,71 +1,64 @@
 # orgtd
 
-GTD × org-mode 的時間與專案管理系統。多人帳號，資料同時存在 PostgreSQL
-與 **org-mode 純文字檔**——網頁上編輯，也能直接用 Emacs 或 VSCode 打開
-同一份檔案。
+GTD × org-mode 的時間與專案管理系統。多人帳號、網頁介面，資料可一鍵
+匯出成 **org-mode 純文字檔**，下載到自己電腦用 Emacs 或 VSCode 打開。
 
-Flask 3 · PostgreSQL 17 · SQLAlchemy 2.0 · Alembic · 39 個測試
+Flask 3 · PostgreSQL 17 · SQLAlchemy 2.0 · Alembic · 45 個測試
 
 ---
 
 ## 這個專案在解什麼問題
 
-GTD 工具與 org-mode 各有各的好，但通常只能二選一：
+GTD 工具與 org-mode 各有各的好，通常只能二選一：
 
 - **GTD 的 SaaS 工具**（Todoist、Things）介面好用，但資料鎖在別人的雲端，
-  匯出的格式也不是能拿來編輯的東西。
+  匯出的格式往往不是能直接拿來編輯的東西。
 - **Emacs org-mode** 資料是自己的純文字，可以版控、可以 grep、二十年後
-  還打得開，但沒有網頁介面，換一台電腦或想在手機上看就很麻煩。
+  還打得開，但沒有網頁介面。
 
-orgtd 讓兩邊同時成立：網頁介面負責日常操作與統計，org 檔負責長期保存
-與跨工具編輯。**同一份資料，兩個入口。**
+orgtd 的取捨是：**網頁介面負責日常操作與統計，隨時能把資料以 org 格式
+帶走**。匯出的不是專有格式的備份檔，是可以直接編輯、直接餵給
+`org-agenda` 的 org 檔。
 
 ---
 
 ## 三個關鍵設計決策
 
-### 1. org 檔是事實來源，PostgreSQL 是衍生索引
+### 1. 一切皆節點
 
-這是整個系統最重要的取捨。
+`nodes` 一張表用 `kind` 區分 inbox / project / task / note / someday，
+`parent_id` 自關聯構成 org-mode 式的 outline 大綱樹。
 
-如果反過來（DB 為準、org 檔只是匯出），那麼你在 Emacs 裡的修改下一次同步
-就會被覆蓋掉——「能用 Emacs 編輯」就是假的。所以方向必須是：檔案優先，
-資料庫是它的索引。
+GTD 的 clarify 動作因此只是一次 `UPDATE kind, parent_id, todo_state`，
+不用搬表——這對應 GTD 流程本身的流動性：一個收集箱項目可能變成任務、
+變成專案、變成參考資料，或者直接丟掉。
 
-Postgres 仍然做它真正擅長的事，這些全是唯讀路徑，不受影響：
+這讓 PostgreSQL 能發揮它真正擅長的部分：
 
 | 能力 | 用到的技術 |
 |---|---|
 | outline 大綱樹展開 | `WITH RECURSIVE` CTE，用陣列 path 排序 |
 | 中文子字串搜尋 | `pg_trgm` 三連字 GIN 索引 |
-| agenda 查詢 | 部分索引（`WHERE archived_at IS NULL`），索引體積只含未封存節點 |
+| agenda 查詢 | 部分索引（`WHERE archived_at IS NULL`），索引只含未封存節點 |
 | 連續天數 streak | 窗口函數的 gaps-and-islands 解法 |
 | 番茄鐘統計 | `date_trunc` 聚合 |
 
 > 為什麼中文搜尋不用內建全文檢索：PostgreSQL 的 `to_tsvector` 不斷中文詞，
 > 「專案管理」整串會變成一個 token，搜「專案」找不到。`pg_trgm` 做的是
-> 三個字元一組的模糊比對，不需要詞典就能處理子字串。代價是它比對的是
-> 字形而非語意，要更準得裝 `zhparser`。
+> 三個字元一組的模糊比對，不需要詞典就能處理子字串。代價是它比對字形
+> 而非語意，要更準得裝 `zhparser`。
 
-### 2. 節點身分靠 org 的 `:ID:` 屬性，不靠標題或行號
+### 2. org 檔是單向匯出，不是同步
 
-每個節點在 org 檔的 `:PROPERTIES:` 抽屜裡帶一個 `:ID:`（就是 Emacs 內建
-`org-id` 的用法）：
+資料庫是唯一的事實來源。按下匯出才即時算出 org 檔，**伺服器不留副本**。
 
-```org
-* NEXT [#A] 買咖啡豆                                            :errand:
-  SCHEDULED: <2026-09-08 Tue 09:00 +1w>
-  :PROPERTIES:
-  :ID: 0e4d38e2-3a1f-4c88-9b2e-7f1a5c6d8e90
-  :ORGTD_KIND: task
-  :END:
-```
+一開始做的是雙向同步——org 檔長期存在磁碟上，外部編輯能回寫資料庫。
+砍掉的理由是複雜度不成比例：要替每個使用者保管資料夾、記錄檔案指紋、
+偵測外部改動、處理兩邊同時修改的衝突，還要擋住「使用者填的路徑其實是
+伺服器上的路徑」這種任意寫入破口。
 
-所以你在 Emacs 裡改標題、搬到別的位置、重新排序，回寫時仍然對得回同一列
-資料——番茄鐘紀錄與提醒設定不會斷掉。這件事有測試守著
-（`test_node_identity_survives_external_edit`）。
-
-沒有 `:ID:` 的節點（你手動打的）會在匯入時自動配發一個。
+而它真正要滿足的需求只是「我想用 Emacs 開自己的資料」——下載一份就夠了。
+砍掉之後少了一個模組、五個磁碟路徑相關的設定，以及一整類同步 bug。
 
 ### 3. 多租戶的 user_id 是必填位置參數，不是預設值
 
@@ -117,70 +110,58 @@ Google、Apple、X 都評估過，結論是成本大於價值：
 | X | **每月 200 美元**（Basic 層） | 免費層多數端點限制到 24 小時 1 次請求，而登入後必須呼叫 `GET /2/users/me` 才能識別使用者——等於第二個人登入就失敗 |
 
 Google 那條唯一的障礙只是申請流程，但為了一個自架的個人系統多接一個
-外部相依與一組要保管的密鑰，不划算。要加回來的話，
-`migrations/versions/b2c3d4e5f6a7_drop_oauth_accounts.py` 的 `downgrade()`
-就是現成的建表腳本。
+外部相依與一組要保管的密鑰，不划算。
 
-## org 資料夾
+---
 
-每位使用者一個資料夾，裡面是 org-mode GTD 社群慣例的檔案配置：
+## 匯出 org 檔
+
+設定頁可以整包下載 `.zip`，或單獨下載某一個檔案。內容依 org-mode GTD
+社群的慣例分成五份：
 
 ```
-~/org/                  ← 建議路徑（見下方說明）
-├── inbox.org           收集箱
-├── projects.org        專案（含底下的任務子樹）
-├── notes.org           筆記
-├── someday.org         將來也許
-├── archive.org         已封存
-└── .orgtd/             同步指紋，Emacs 不會誤收（點開頭）
+inbox.org      收集箱
+projects.org   專案（含底下的任務子樹）
+notes.org      筆記
+someday.org    將來也許
+archive.org    已封存
 ```
 
-**為什麼建議叫 `~/org`**：這是 Emacs 變數 `org-directory` 的預設值，
-`org-agenda-files` 的慣例也指向那裡。用這個名字，Emacs 使用者的既有設定
-不用改就吃得到。設定頁可以改成別的路徑。
+產出的是標準 org-mode 格式：
+
+```org
+* NEXT [#A] 買咖啡豆                                            :errand:
+  SCHEDULED: <2026-09-08 Tue 09:00 +1w>
+  :PROPERTIES:
+  :ID: 0e4d38e2-3a1f-4c88-9b2e-7f1a5c6d8e90
+  :ORGTD_KIND: task
+  :END:
+```
+
+`:ID:` 用的是 Emacs 內建 `org-id` 的欄位名，而且**每次匯出對同一個節點
+都給同一個值**——它存在資料庫裡，不是匯出時臨時產生的。所以你在 Emacs
+裡建立的 org-id 連結不會因為重新匯出一次就失效。
 
 ### 在 Emacs 裡用
 
 ```elisp
-(setq org-directory "~/org")
 (setq org-agenda-files (directory-files-recursively "~/org" "\\.org$"))
 ```
 
-`C-c a` 就會看到 orgtd 產生的所有排程與截止項目。
+`C-c a` 就會看到匯出的所有排程與截止項目。
 
 ### 在 VSCode 裡用
 
-裝 [Org Mode 擴充套件](https://marketplace.visualstudio.com/items?itemName=vscode-org-mode.org-mode)，
-直接開資料夾即可。沒裝擴充也能當純文字編輯，格式不會壞。
+裝 [Org Mode 擴充套件](https://marketplace.visualstudio.com/items?itemName=vscode-org-mode.org-mode)
+後直接開資料夾。沒裝擴充當純文字讀也不會亂。
 
-### 兩邊改動怎麼合
-
-同步指紋存在 `.orgtd/state.json`。設定頁有兩個按鈕：
-
-- **從檔案匯入**：偵測到外部改動時，以檔案內容為準回寫資料庫
-- **重新產生檔案**：以資料庫為準重寫 org 檔
-
-也可以走指令列：
+### 也可以走指令列
 
 ```sh
-.venv/bin/python manage.py import your@email.com
-.venv/bin/python manage.py export your@email.com
+.venv/bin/python manage.py export your@email.com ~/org
 ```
 
-檔案裡消失的節點會被**封存**而不是硬刪——手滑刪掉一段還救得回來。
-
-### 遠端使用者的資料夾在哪
-
-這點值得講清楚：如果你把 orgtd 架在一台伺服器上給別人用，那些 org 檔是在
-**伺服器的磁碟上**，遠端使用者沒辦法用自己電腦的 Emacs 直接打開。所以：
-
-- **自架單人**（`ORGTD_ALLOW_CUSTOM_ORG_DIR=1`）：資料夾就在你自己的機器上，
-  設成 `~/org`，Emacs 直接開，這是完整體驗。
-- **對外多人站台**（設 `0`）：資料夾由系統配置在 `<ORG_ROOT>/<uuid>/`，
-  使用者透過設定頁的 **下載 .zip** 取得檔案。
-
-多人站台**不開放**使用者自填路徑，因為那填的是伺服器上的路徑，等同讓任何
-註冊者對伺服器檔案系統任意寫入。這個限制在程式裡是硬性的，不只是介面上藏起來。
+> 匯出是**單向**的：在 Emacs 或 VSCode 裡的改動不會回寫到網站。
 
 ---
 
@@ -220,8 +201,6 @@ python3 -c "import secrets; print(secrets.token_hex(32))"   # 貼進 ORGTD_SECRE
 | `ORGTD_SECRET_KEY` | **必填**。session 簽章密鑰，沒設定且非 debug 模式會直接拒絕啟動 |
 | `ORGTD_DATABASE_URL` | 連線字串 |
 | `ORGTD_DEBUG` | 預設 `0`。對外部署務必保持關閉 |
-| `ORGTD_ORG_ROOT` | org 資料夾根目錄，預設 `~/orgtd-data` |
-| `ORGTD_ALLOW_CUSTOM_ORG_DIR` | 自架單人設 `1`，對外站台設 `0` |
 | `ORGTD_ALLOW_REGISTRATION` | 是否開放註冊 |
 | `ORGTD_NOTIFY_EMAIL` | 桌面提醒發給誰，留空取最早建立的帳號 |
 
@@ -239,13 +218,13 @@ python3 -c "import secrets; print(secrets.token_hex(32))"   # 貼進 ORGTD_SECRE
 
 Flask 內建的 Werkzeug 伺服器是單執行緒開發用的，而且 `debug=True` 時它的
 除錯器允許在瀏覽器裡執行任意 Python——對外開一個 port 就是完整的遠端執行
-漏洞。這個專案的 debug 現在由 `ORGTD_DEBUG` 控制，**預設關閉**。
+漏洞。這個專案的 debug 由 `ORGTD_DEBUG` 控制，**預設關閉**。
 
 ### 用雙擊圖示啟動
 
 `gui/` 有三個 AppleScript 編譯的 `.app`（啟動／關閉／開網頁），可拖到 Dock。
-用 `gui/build.sh` 從 `.applescript` 原始碼重新編譯（`osacompile` 是 macOS 內建，
-不用額外裝東西）。
+用 `gui/build.sh` 從 `.applescript` 原始碼重新編譯（`osacompile` 是 macOS
+內建，不用額外裝東西）。
 
 雙擊啟動會設 `ORGTD_NO_RELOAD=1` 關掉 reloader，讓伺服器只有單一 process
 ——reloader 會多 fork 一個子行程，只殺父行程會殘留子行程繼續佔用 port。
@@ -262,27 +241,25 @@ ORGTD_DATABASE_URL="postgresql+psycopg://$(whoami)@localhost:5432/orgtd_test" \
   .venv/bin/python -m pytest tests/ -q
 ```
 
-39 個測試，分四組：
+45 個測試，分四組：
 
 | 檔案 | 守的是什麼 |
 |---|---|
+| `test_org_export.py` | 25 項。匯出的真的是 Emacs 讀得懂的 org 格式，且只含自己的資料 |
 | `test_tenant_isolation.py` | 11 項。B 使用者讀不到也改不到 A 的任何東西 |
-| `test_org_sync.py` | 11 項。外部編輯真的能回寫，且節點身分不斷 |
-| `test_org_roundtrip.py` | 9 項。org 解析／輸出無損，含中文標題、標籤、重複規則 |
-| `test_auth.py` / `test_csrf.py` | 8 項。登入、存取控制、CSRF |
+| `test_auth.py` | 7 項。註冊、登入、存取控制 |
+| `test_csrf.py` | 2 項。沒帶 token 的 POST 一律拒絕 |
 
-幾個測試是回歸測試，對應開發時真的踩到的坑：
+幾個是回歸測試，對應開發時真的踩到的坑：
 
-- `test_title_without_state_is_not_swallowed`——標題「TODOs 清單整理」
-  不可被誤判成 TODO 狀態
-- `test_custom_dir_rejects_dangerous_paths`——macOS 的 `/etc` 是
-  `/private/etc` 的符號連結，早先用字面前綴比對的黑名單會被繞過，
-  後來改成「必須在家目錄內」的正面表列
-- `test_emacs_style_localised_daynames_parse`——Emacs 依語系會把星期寫成
-  「週一」，解析器不能假設是英文縮寫
-- `test_fresh_directory_reports_no_external_changes`——建立資料夾時忘了
-  登記檔案指紋，導致每個新帳號一進設定頁就看到五個檔案全掛著
-  「外部已修改」的假警報
+- `test_newline_in_title_is_flattened`——標題裡的換行會把一個 headline
+  拆成兩行，破壞整份檔案的結構
+- `test_midnight_scheduled_omits_time`——午夜的排程不該印出 `00:00`，
+  org 的慣例是純日期
+- `test_org_id_is_stable_across_exports`——`:ID:` 若每次匯出都重算，
+  使用者在 Emacs 建立的 org-id 連結就會失效
+- `test_filename_must_be_on_the_whitelist`——下載單一檔案時檔名走白名單
+  比對而非路徑組合，從根本上沒有 `../` 穿越的餘地
 
 ---
 
@@ -304,8 +281,8 @@ launchctl load ~/Library/LaunchAgents/com.orgtd.notifier.plist
 > 機器主人自己的提醒。改成掃全站會把其他使用者的任務標題彈到主人桌面上
 > ——那是資料外洩。
 
-重複任務（`+1d` / `+1w` / `+1m`）完成時不會關閉，而是把排程與截止日往後推
-一輪、狀態留回 NEXT，這是 org-mode 重複任務的語意。
+重複任務（`+1d` / `+1w` / `+1m`）完成時不會關閉，而是把排程與截止日往後
+推一輪、狀態留回 NEXT，這是 org-mode 重複任務的語意。
 
 ---
 
@@ -315,27 +292,20 @@ launchctl load ~/Library/LaunchAgents/com.orgtd.notifier.plist
 .venv/bin/python manage.py list-users
 .venv/bin/python manage.py create-user <email> [顯示名稱]
 .venv/bin/python manage.py set-password <email>
-.venv/bin/python manage.py export <email>     # DB → org 檔
-.venv/bin/python manage.py import <email>     # org 檔 → DB
+.venv/bin/python manage.py export <email> <目標資料夾>
 ```
 
 ---
 
-## 資料模型
+## 多租戶改造時修掉的地雷
 
-一切皆節點。`nodes` 一張表用 `kind` 區分 inbox / project / task / note /
-someday，`parent_id` 自關聯構成 outline 大綱樹。
-
-GTD 的 clarify 動作因此只是一次 `UPDATE kind, parent_id, todo_state`，
-不用搬表——這對應 GTD 流程本身的流動性：一個收集箱項目可能變成任務、
-變成專案、變成參考資料，或者直接丟掉。
-
-多租戶改造時修掉的兩個地雷（原本是單人設計）：
+原本是單人設計，改成多人時有兩個全域唯一鍵會直接撞車：
 
 - `tags.name` 原本全域唯一 → 第二個人建同名標籤會失敗
 - `weekly_reviews.week_start` 原本全域唯一 → 第二個人做同一週的回顧會撞主鍵
 
-兩者都改成 `(user_id, X)` 的複合唯一鍵，各有一個測試守著。
+兩者都改成 `(user_id, X)` 的複合唯一鍵，各有一個測試守著。索引也全部重建，
+把 `user_id` 移到最左欄——否則多租戶篩選吃不到索引。
 
 完整設計理念見 [`PLAN.md`](PLAN.md)。
 
@@ -350,14 +320,13 @@ db.py             engine / session / Base
 models.py         SQLAlchemy 模型與索引定義
 queries.py        跨 view 共用的進階查詢（全部強制帶 user_id）
 security.py       argon2 密碼雜湊、Flask-Login 設定
-orgfiles.py       org 純文字的解析與輸出、資料夾管理
-orgsync.py        DB ⇄ org 檔的雙向同步引擎
+orgfiles.py       org 純文字匯出（單向，記憶體內完成）
 manage.py         管理指令列
 views/            9 個功能 blueprint + auth + settings + _scope 取用輔助
 templates/        Jinja2 模板
 static/           CSS 與兩支 JS（番茄鐘計時、提醒輪詢）
 migrations/       Alembic 遷移
-tests/            39 個測試
+tests/            45 個測試
 launchd/          提醒排程的 plist
 gui/              macOS 雙擊啟動的 AppleScript
 ```

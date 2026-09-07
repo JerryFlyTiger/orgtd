@@ -5,7 +5,6 @@
 """
 
 import os
-import pathlib
 
 
 def _bool(name: str, default: bool = False) -> bool:
@@ -18,19 +17,6 @@ def _bool(name: str, default: bool = False) -> bool:
 # --- 基本 ---
 SECRET_KEY = os.environ.get("ORGTD_SECRET_KEY", "")
 DEBUG = _bool("ORGTD_DEBUG", False)
-
-# --- org 檔存放 ---
-# 每位使用者的受管資料夾：<ORG_ROOT>/<user.uuid>/
-ORG_ROOT = pathlib.Path(
-    os.environ.get("ORGTD_ORG_ROOT", "~/orgtd-data")
-).expanduser().resolve()
-
-# 是否允許使用者在設定頁自行指定絕對路徑。
-#
-# 自架單人使用時開啟（設成 ~/org，Emacs 直接開得到）。
-# 對外的多人站台必須關閉：遠端使用者填的路徑是「伺服器」上的路徑，
-# 開放等同讓任何註冊者對伺服器檔案系統任意寫入。
-ALLOW_CUSTOM_ORG_DIR = _bool("ORGTD_ALLOW_CUSTOM_ORG_DIR", False)
 
 # 是否開放註冊。作品集展示站可關閉，只留 demo 帳號。
 ALLOW_REGISTRATION = _bool("ORGTD_ALLOW_REGISTRATION", True)
@@ -62,7 +48,5 @@ def apply(app) -> None:
         SESSION_COOKIE_SECURE=SESSION_COOKIE_SECURE,
         SESSION_COOKIE_HTTPONLY=SESSION_COOKIE_HTTPONLY,
         SESSION_COOKIE_SAMESITE=SESSION_COOKIE_SAMESITE,
-        ORG_ROOT=ORG_ROOT,
-        ALLOW_CUSTOM_ORG_DIR=ALLOW_CUSTOM_ORG_DIR,
         ALLOW_REGISTRATION=ALLOW_REGISTRATION,
     )

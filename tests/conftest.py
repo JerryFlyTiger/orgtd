@@ -7,7 +7,6 @@ db.py 在 import 時就建好 engine，所以資料庫位址必須在任何專�
 import os
 import pathlib
 import sys
-import tempfile
 
 os.environ.setdefault(
     "ORGTD_DATABASE_URL", "postgresql+psycopg://jerrychen@localhost:5432/orgtd_test"
@@ -16,14 +15,12 @@ os.environ["ORGTD_SECRET_KEY"] = "test-secret-key-not-for-production"
 os.environ["ORGTD_DEBUG"] = "0"
 os.environ["ORGTD_COOKIE_SECURE"] = "0"  # 測試用 http，不然 cookie 送不出去
 os.environ["ORGTD_ALLOW_REGISTRATION"] = "1"
-os.environ["ORGTD_ORG_ROOT"] = tempfile.mkdtemp(prefix="orgtd-test-")
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 import pytest  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 
-import config  # noqa: E402
 from db import SessionLocal, engine  # noqa: E402
 from models import User  # noqa: E402
 from security import hash_password  # noqa: E402
@@ -65,10 +62,6 @@ def make_user():
             session.add(user)
             session.commit()
             session.refresh(user)
-            # 給每個測試使用者一個獨立的暫存 org 資料夾
-            import orgfiles
-
-            orgfiles.provision_user_directory(user)
             return user.id, user.uuid
 
     return _make

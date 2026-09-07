@@ -8,7 +8,6 @@ from sqlalchemy import select
 
 from db import SessionLocal
 from models import Node
-from orgsync import sync_node
 from queries import search_notes
 from views._scope import owned_node, uid
 
@@ -59,7 +58,6 @@ def save(node_id):
             node.title = title
         node.body = body
         session.commit()
-        sync_node(session, node)
     return redirect(url_for("notes.detail", node_id=node_id))
 
 
@@ -70,5 +68,4 @@ def archive(node_id):
         node = owned_node(session, node_id, kind="note")
         node.archived_at = datetime.datetime.now(datetime.timezone.utc)
         session.commit()
-        sync_node(session, node)
     return redirect(url_for("notes.index"))

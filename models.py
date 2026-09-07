@@ -48,11 +48,6 @@ class User(Base):
     # security.verify_password 擋住。
     password_hash: Mapped[str | None] = mapped_column(sa.String(255))
 
-    # 這個人的 org 檔存放目錄。本機模式由使用者在設定頁指定（例如 ~/org）；
-    # 伺服器模式為 NULL，改用受管目錄 <ORGTD_ORG_ROOT>/<uuid>/，
-    # 不讓遠端使用者指定任意路徑（那是 path traversal 破口）。
-    org_directory: Mapped[str | None] = mapped_column(sa.Text)
-
     is_active: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=True)
     created_at: Mapped[datetime.datetime] = mapped_column(
         sa.DateTime(timezone=True), server_default=func.now()
@@ -114,11 +109,10 @@ class Node(Base):
 
     position: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
 
-    # --- org 檔對應 ---
-    # org_id 寫進 :PROPERTIES: 抽屜的 :ID:，是 DB 列與 org 檔節點之間的錨。
+    # 匯出成 org 檔時寫進 :PROPERTIES: 抽屜的 :ID:（等同 Emacs org-id）。
+    # 存在資料庫而不是每次匯出臨時產生，是為了讓同一個節點在多次匯出之間
+    # 拿到同一個值——否則使用者在 Emacs 裡建的 org-id 連結每匯出一次就失效。
     org_id: Mapped[str] = mapped_column(sa.String(36), nullable=False, default=_uuid4)
-    # 這個節點目前落在哪個 org 檔（inbox.org / projects.org / ...）。
-    org_file: Mapped[str | None] = mapped_column(sa.String(255))
 
     archived_at: Mapped[datetime.datetime | None] = mapped_column(sa.DateTime(timezone=True))
     created_at: Mapped[datetime.datetime] = mapped_column(
