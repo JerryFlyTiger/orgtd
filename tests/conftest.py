@@ -23,6 +23,7 @@ from sqlalchemy import text  # noqa: E402
 
 from db import SessionLocal, engine  # noqa: E402
 from models import User  # noqa: E402
+from emails import normalize_email  # noqa: E402
 from security import hash_password  # noqa: E402
 
 PASSWORD = "correct-horse-battery"
@@ -53,9 +54,14 @@ def clean_db():
 @pytest.fixture
 def make_user():
     def _make(email, name=None):
+        # 跟生產寫入路徑（_create_user / change_email）走同一套正規化，
+        # 否則測試裡寫 make_user("Mixed@Example.com") 會因大小寫查不到人，
+        # 讓人誤以為是產品程式碼壞掉。
+        normalized, error = normalize_email(email)
+        assert error is None, f"測試用的 email 格式不正確：{email}（{error}）"
         with SessionLocal() as session:
             user = User(
-                email=email,
+                email=normalized,
                 display_name=name or email.split("@")[0],
                 password_hash=hash_password(PASSWORD),
             )

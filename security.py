@@ -1,5 +1,7 @@
 """密碼雜湊與登入狀態。
 
+email 的驗證與正規化在 emails.py。
+
 雜湊用 argon2id（OWASP 現行首選，優於 bcrypt：抗 GPU 與抗記憶體權衡攻擊）。
 argon2-cffi 的預設參數即為其建議值，不自訂以免調弱。
 """
@@ -43,3 +45,4 @@ def needs_rehash(password_hash: str) -> bool:
         return _hasher.check_needs_rehash(password_hash)
     except InvalidHashError:
         return False
+

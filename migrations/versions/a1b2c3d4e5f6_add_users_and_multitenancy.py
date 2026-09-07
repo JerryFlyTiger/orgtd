@@ -23,7 +23,11 @@ branch_labels = None
 depends_on = None
 
 # 既有單人資料要掛在誰名下。email 可用環境變數覆寫，之後也能在設定頁改。
-OWNER_EMAIL = os.environ.get("ORGTD_OWNER_EMAIL", "owner@localhost")
+#
+# 必須轉小寫：登入與 manage.py 都只用小寫查詢，這裡若存進含大寫的值，
+# 站長會登不進去，而且因為 password_hash 是 NULL，連 manage.py set-password
+# 也會因為同樣的大小寫問題找不到人，只剩直接改資料庫一途。
+OWNER_EMAIL = os.environ.get("ORGTD_OWNER_EMAIL", "owner@localhost").strip().lower()
 OWNER_NAME = os.environ.get("ORGTD_OWNER_NAME", "站長")
 
 # 掛上 user_id 的既有資料表

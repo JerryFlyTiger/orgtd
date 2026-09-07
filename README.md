@@ -3,7 +3,7 @@
 GTD × org-mode 的時間與專案管理系統。多人帳號、網頁介面，資料可一鍵
 匯出成 **org-mode 純文字檔**，下載到自己電腦用 Emacs 或 VSCode 打開。
 
-Flask 3 · PostgreSQL 17 · SQLAlchemy 2.0 · Alembic · 45 個測試
+Flask 3 · PostgreSQL 17 · SQLAlchemy 2.0 · Alembic · 66 個測試
 
 ---
 
@@ -90,7 +90,7 @@ def fetch_agenda(session, user_id):   # 不是 user_id=None
   `X-CSRFToken` 標頭）。
 - **Session**：Flask-Login，`session_protection="strong"`。
 
-兩個刻意的安全處理：
+三個刻意的安全處理：
 
 - **帳號枚舉防護**：「帳號不存在」與「密碼錯誤」回傳完全相同的訊息；
   IDOR 的 404 也不區分「不存在」與「不屬於你」。否則攻擊者能靠回應差異
@@ -98,6 +98,35 @@ def fetch_agenda(session, user_id):   # 不是 user_id=None
 - **未設密碼的帳號無法登入**：`password_hash` 允許為 NULL（舊單人資料
   遷移過來的站長帳號就是這個狀態），`verify_password()` 對 NULL 一律回
   `False`，不會因為「空密碼比對成功」而放行。
+- **改 email 要輸入目前密碼**：email 是帳號的主要識別，session 若被竊，
+  改掉 email 等於接管帳號，所以不能只靠「已登入」就放行。
+
+### email 一律轉小寫存
+
+`email_validator` 的 `normalized` 只把網域轉小寫、保留使用者名稱的大小寫
+（RFC 上 local part 確實區分大小寫），但這個專案所有查詢都是 `.lower()`
+比對——兩邊不一致的話，用 `Jerry@x.com` 註冊完就再也登不進去。所以
+`security.normalize_email()` 驗完格式後把整串轉小寫，寫入與查詢共用同一
+個基準。實務上主流信箱供應商也都不分大小寫。
+
+驗證刻意關掉 `check_deliverability`：那會做 DNS 查詢，開發時常常離線，
+而且一次網路往返會讓註冊表單莫名卡好幾秒；格式對不對不需要問 DNS。
+代價是 `jerry@local` 這種沒有點的網域會被拒絕——所以登入端在正規化失敗時
+會退回單純的去空白轉小寫，早期建立的帳號才不會被自己的資料鎖在門外。
+
+改掉程式碼救不了已經存進資料庫的舊值：Alembic 不會重跑已套用的 revision。
+既有帳號的正規化由 `d4e5f6a7b8c9` 這支資料修正 migration 處理，它若發現
+兩個帳號正規化後會撞在一起，會直接失敗並要求人工決定，而不是自動合併或
+刪掉其中一方——那是不可逆的資料決策。
+
+### 查詢鍵只有一個來源
+
+`emails.lookup_key()` 是唯一該用來查詢既有帳號的函式，登入、`manage.py`
+與資料修正 migration 全部走它。這件事被踩過一次：三邊各自寫了「去空白 +
+轉小寫（+ 有時候 NFC）」，看起來等價，實際上不是——`validate_email()` 對
+網域還會做 IDNA/UTS-46 相容映射（全形 `ｅｘａｍｐｌｅ` → `example`），
+自製的 NFC 版本不會。於是那支「修正資料」的 migration 反而把帳號改成
+登不進去。一致性要由結構保證，不能靠人記得同步三個地方。
 
 ### 為什麼沒有第三方登入
 
@@ -111,6 +140,16 @@ Google、Apple、X 都評估過，結論是成本大於價值：
 
 Google 那條唯一的障礙只是申請流程，但為了一個自架的個人系統多接一個
 外部相依與一組要保管的密鑰，不划算。
+
+---
+
+## 設定頁
+
+- 改顯示名稱
+- 改登入用的 email（需輸入目前密碼）
+- 改密碼
+- 番茄鐘時長參數
+- 匯出 org 檔（見下）
 
 ---
 
@@ -241,13 +280,14 @@ ORGTD_DATABASE_URL="postgresql+psycopg://$(whoami)@localhost:5432/orgtd_test" \
   .venv/bin/python -m pytest tests/ -q
 ```
 
-45 個測試，分四組：
+66 個測試，分五組：
 
 | 檔案 | 守的是什麼 |
 |---|---|
 | `test_org_export.py` | 25 項。匯出的真的是 Emacs 讀得懂的 org 格式，且只含自己的資料 |
+| `test_change_email.py` | 15 項。改 email 的每一種「不該成功」的情況 |
 | `test_tenant_isolation.py` | 11 項。B 使用者讀不到也改不到 A 的任何東西 |
-| `test_auth.py` | 7 項。註冊、登入、存取控制 |
+| `test_auth.py` | 13 項。註冊、登入、存取控制、email 正規化一致性 |
 | `test_csrf.py` | 2 項。沒帶 token 的 POST 一律拒絕 |
 
 幾個是回歸測試，對應開發時真的踩到的坑：
@@ -260,6 +300,21 @@ ORGTD_DATABASE_URL="postgresql+psycopg://$(whoami)@localhost:5432/orgtd_test" \
   使用者在 Emacs 建立的 org-id 連結就會失效
 - `test_filename_must_be_on_the_whitelist`——下載單一檔案時檔名走白名單
   比對而非路徑組合，從根本上沒有 `../` 穿越的餘地
+- `test_email_is_stored_lowercase`——email 存進去若保留大小寫，之後用
+  小寫查就找不到人，等於使用者改完 email 把自己鎖在門外
+- `test_unicode_is_normalised_consistently_between_register_and_login`——
+  註冊端會做 Unicode NFC 正規化而登入端只做 `.lower()`，用分解形式
+  （`e` + 組合重音）註冊的人會永遠登不回去，且沒有忘記密碼流程可以自救
+- `test_race_on_unique_email_is_handled_gracefully`——唯一性檢查到 commit
+  之間的空窗由資料庫約束擋下，但沒接住 `IntegrityError` 的話使用者看到的
+  是 500 而不是「這個 email 已經被使用了」
+- `test_legacy_account_with_nonstandard_email_can_still_log_in`——早期建立
+  的帳號 email 未必通過現行格式規則，登入端少了那條退路，這些人會被自己
+  的資料永久鎖在門外
+- `test_register_and_login_survive_idna_domain_mapping`——這支用全形網域
+  走完整的註冊→登出→登入。其餘登入測試全是純 ASCII，而純 ASCII 下
+  `lookup_key()` 跟天真的 `.strip().lower()` 行為完全一樣，等於防線在
+  使用者真正的入口沒被測到
 
 ---
 
@@ -320,13 +375,14 @@ db.py             engine / session / Base
 models.py         SQLAlchemy 模型與索引定義
 queries.py        跨 view 共用的進階查詢（全部強制帶 user_id）
 security.py       argon2 密碼雜湊、Flask-Login 設定
+emails.py         email 驗證與正規化（全站唯一來源，不相依框架）
 orgfiles.py       org 純文字匯出（單向，記憶體內完成）
 manage.py         管理指令列
 views/            9 個功能 blueprint + auth + settings + _scope 取用輔助
 templates/        Jinja2 模板
 static/           CSS 與兩支 JS（番茄鐘計時、提醒輪詢）
 migrations/       Alembic 遷移
-tests/            45 個測試
+tests/            66 個測試
 launchd/          提醒排程的 plist
 gui/              macOS 雙擊啟動的 AppleScript
 ```

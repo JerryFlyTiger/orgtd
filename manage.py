@@ -21,11 +21,13 @@ import pathlib  # noqa: E402
 import orgfiles  # noqa: E402
 from db import SessionLocal  # noqa: E402
 from models import User  # noqa: E402
+from emails import lookup_key, normalize_email  # noqa: E402
 from security import hash_password  # noqa: E402
 
 
 def _get_user(session, email):
-    user = session.scalar(select(User).where(User.email == email.strip().lower()))
+    # 查詢鍵跟 login() 與資料修正 migration 同源，見 emails.lookup_key。
+    user = session.scalar(select(User).where(User.email == lookup_key(email)))
     if user is None:
         sys.exit(f"找不到帳號：{email}")
     return user
@@ -50,9 +52,13 @@ def set_password(email):
 
 
 def create_user(email, display_name=None):
+    # email 先驗完再問密碼：格式打錯的話，不該讓人白打兩次密碼才被退回。
+    normalised, error = normalize_email(email)
+    if error:
+        sys.exit(error)
     pw = _prompt_password()
     with SessionLocal() as session:
-        email = email.strip().lower()
+        email = normalised
         if session.scalar(select(User).where(User.email == email)):
             sys.exit(f"{email} 已經存在。")
         user = User(

@@ -21,6 +21,7 @@ from sqlalchemy import select
 
 from db import SessionLocal
 from models import User
+from emails import lookup_key, normalize_email
 from security import hash_password, needs_rehash, verify_password
 
 bp = Blueprint("auth", __name__)
@@ -40,8 +41,9 @@ def _safe_next(target: str | None) -> str:
 
 
 def _create_user(session, *, email, display_name, password):
+    """email 必須是已通過 normalize_email() 的值。"""
     user = User(
-        email=email.strip().lower(),
+        email=email,
         display_name=display_name.strip()[:80] or email.split("@")[0],
         password_hash=hash_password(password),
     )
@@ -65,14 +67,15 @@ def register():
         return redirect(url_for("auth.login"))
 
     if request.method == "POST":
-        email = (request.form.get("email") or "").strip().lower()
+        raw_email = request.form.get("email") or ""
         name = (request.form.get("display_name") or "").strip()
         pw = request.form.get("password") or ""
         pw2 = request.form.get("password_confirm") or ""
 
         errors = []
-        if "@" not in email or len(email) > 255:
-            errors.append("請填寫有效的 email。")
+        email, email_error = normalize_email(raw_email)
+        if email_error:
+            errors.append(email_error)
         if len(pw) < MIN_PASSWORD_LENGTH:
             errors.append(f"密碼至少 {MIN_PASSWORD_LENGTH} 個字元。")
         if pw != pw2:
@@ -92,7 +95,9 @@ def register():
 
         for e in errors:
             flash(e, "warn")
-        return render_template("auth/register.html", email=email, display_name=name)
+        return render_template(
+            "auth/register.html", email=raw_email.strip(), display_name=name
+        )
 
     return render_template("auth/register.html", email="", display_name="")
 
@@ -103,8 +108,12 @@ def login():
         return redirect(url_for("inbox.index"))
 
     if request.method == "POST":
-        email = (request.form.get("email") or "").strip().lower()
+        raw_email = request.form.get("email") or ""
         pw = request.form.get("password") or ""
+        # 查詢鍵一律走 lookup_key()，跟 manage.py 與資料修正 migration 同源。
+        # 自己在這裡拼一套「去空白轉小寫」是行不通的：寫入端會做 Unicode
+        # NFC 與 IDNA 映射，兩邊算出的鍵不同就永遠查不到人。
+        email = lookup_key(raw_email)
 
         with SessionLocal() as session:
             user = session.scalar(select(User).where(User.email == email))
@@ -118,7 +127,7 @@ def login():
                 return redirect(_safe_next(request.args.get("next")))
 
         flash("email 或密碼不正確。", "warn")
-        return render_template("auth/login.html", email=email)
+        return render_template("auth/login.html", email=raw_email.strip())
 
     return render_template("auth/login.html", email="")
 

@@ -5,13 +5,35 @@
 
 <section class="card">
   <h2>個人資料</h2>
-  <p class="muted">帳號：{{ user.email }}</p>
   <form method="post" action="{{ url_for('settings.save_profile') }}" class="stacked-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label for="display_name">顯示名稱</label>
     <input id="display_name" name="display_name" type="text" maxlength="80"
            value="{{ user.display_name }}">
     <button type="submit">儲存</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>登入用的 email</h2>
+  <p class="muted">目前：<code>{{ user.email }}</code></p>
+
+  <form method="post" action="{{ url_for('settings.change_email') }}" class="stacked-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label for="new_email">新的 email</label>
+    <input id="new_email" name="new_email" type="email" maxlength="255"
+           autocomplete="email" placeholder="{{ user.email }}">
+
+    {% if has_password %}
+    <label for="email_current_password">目前密碼</label>
+    <input id="email_current_password" name="current_password" type="password"
+           autocomplete="current-password">
+    <p class="field-hint">
+      email 是帳號的主要識別，改動需要密碼確認。
+    </p>
+    {% endif %}
+
+    <button type="submit">變更 email</button>
   </form>
 </section>
 
