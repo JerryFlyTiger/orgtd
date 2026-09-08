@@ -28,8 +28,11 @@ def test_register_then_access(client):
             "csrf_token": token,
         },
     )
-    assert resp.status_code == 302
-    assert client.get("/").status_code == 200
+    # 註冊成功後直接渲染救援碼頁（200），不是轉址——明碼只在這個回應裡
+    # 出現一次，不進 session、也不重新查得到。
+    assert resp.status_code == 200
+    assert "救援碼" in resp.get_data(as_text=True)
+    assert client.get("/").status_code == 200, "註冊後應已登入"
 
 
 def test_register_rejects_short_password(client):

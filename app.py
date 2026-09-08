@@ -58,6 +58,13 @@ def create_app():
     app.register_blueprint(settings_bp)
 
     @app.context_processor
+    def inject_password_policy():
+        # 前端提示與後端驗證共用同一個常數，避免兩邊各自硬編碼而漂移。
+        from views.auth import MIN_PASSWORD_LENGTH
+
+        return {"min_password_length": MIN_PASSWORD_LENGTH}
+
+    @app.context_processor
     def inject_badges():
         # 未登入時（登入頁、註冊頁）不查資料庫，也沒有徽章可算。
         if not current_user.is_authenticated:

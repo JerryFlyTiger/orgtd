@@ -15,13 +15,13 @@
            maxlength="80" autocomplete="nickname">
 
     <label for="password">密碼</label>
-    <input id="password" name="password" type="password" required minlength="12"
-           autocomplete="new-password">
-    <p class="field-hint">至少 12 個字元。長的通行短語比複雜符號更安全也更好記。</p>
+    <input id="password" name="password" type="password" required minlength="{{ min_password_length }}"
+           autocomplete="new-password" data-password-meter="{{ min_password_length }}">
+    <p class="field-hint">長的通行短語比複雜符號更安全也更好記，例如三四個不相干的詞。</p>
 
     <label for="password_confirm">再輸入一次密碼</label>
     <input id="password_confirm" name="password_confirm" type="password" required
-           minlength="12" autocomplete="new-password">
+           minlength="{{ min_password_length }}" autocomplete="new-password" data-password-match="password">
 
     <button type="submit" class="primary-button">註冊</button>
   </form>

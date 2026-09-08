@@ -17,6 +17,8 @@
     <button type="submit" class="primary-button">登入</button>
   </form>
 
+  <p class="auth-alt"><a href="{{ url_for('auth.forgot_password') }}">忘記密碼？</a></p>
+
   {% if config.ALLOW_REGISTRATION %}
   <p class="auth-alt">還沒有帳號？<a href="{{ url_for('auth.register') }}">註冊一個</a></p>
   {% endif %}

@@ -69,6 +69,39 @@ class User(Base):
         return str(self.id)
 
 
+class RecoveryCode(Base):
+    """一次性救援碼：忘記密碼時用來重設。
+
+    為什麼不做「寄重設連結到信箱」：這個系統沒有寄信能力，而且自架環境
+    要接 SMTP 等於多一組要保管的憑證與一個會壞的外部相依。救援碼把恢復
+    能力交還給使用者自己保管，不需要任何外部服務。
+
+    為什麼用 SHA-256 而不是 argon2：密碼要用慢雜湊，是因為人選的密碼熵很
+    低，必須讓每次猜測都昂貴。救援碼是程式產生的 125 位元隨機值，暴力搜尋
+    在物理上不可行，慢雜湊只會拖慢正常驗證。而且確定性雜湊可以直接用
+    索引查到那一列；若用 argon2（每次加鹽），就得把使用者所有未使用的碼
+    逐一驗過，10 組就是十次昂貴運算。
+    """
+
+    __tablename__ = "recovery_codes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    # sha256 十六進位，64 字元。全域唯一：碼本身就夠隨機，撞號視為異常。
+    code_hash: Mapped[str] = mapped_column(sa.String(64), nullable=False, unique=True)
+    used_at: Mapped[datetime.datetime | None] = mapped_column(
+        sa.DateTime(timezone=True)
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        sa.DateTime(timezone=True), server_default=func.now()
+    )
+
+
+Index("ix_recovery_user", RecoveryCode.user_id)
+
+
 node_tags = Table(
     "node_tags",
     Base.metadata,

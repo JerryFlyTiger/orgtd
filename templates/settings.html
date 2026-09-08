@@ -107,12 +107,49 @@
            autocomplete="current-password">
     {% endif %}
     <label for="new_password">新密碼</label>
-    <input id="new_password" name="new_password" type="password" minlength="12"
-           autocomplete="new-password">
+    <input id="new_password" name="new_password" type="password" minlength="{{ min_password_length }}"
+           autocomplete="new-password" data-password-meter="{{ min_password_length }}">
     <label for="new_password_confirm">再輸入一次</label>
     <input id="new_password_confirm" name="new_password_confirm" type="password"
-           minlength="12" autocomplete="new-password">
+           minlength="{{ min_password_length }}" autocomplete="new-password" data-password-match="new_password">
     <button type="submit">{% if has_password %}更新密碼{% else %}設定密碼{% endif %}</button>
+  </form>
+</section>
+<section class="card">
+  <h2>救援碼</h2>
+  <p class="muted">
+    忘記密碼時用來重設的一次性代碼。這個系統不寄信，所以救援碼是唯一
+    不需要碰終端機的恢復途徑。
+  </p>
+
+  <table class="settings-table">
+    <tr>
+      <th>剩餘可用</th>
+      <td>
+        {% if recovery_remaining == 0 %}
+          <span class="warn-text">0 組——忘記密碼就只能從終端機重設</span>
+        {% elif recovery_remaining <= 2 %}
+          <span class="warn-text">{{ recovery_remaining }} 組，建議重新產生</span>
+        {% else %}
+          {{ recovery_remaining }} 組
+        {% endif %}
+      </td>
+    </tr>
+  </table>
+
+  <form method="post" action="{{ url_for('settings.regenerate_recovery_codes') }}"
+        class="stacked-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% if has_password %}
+    <label for="recovery_current_password">目前密碼</label>
+    <input id="recovery_current_password" name="current_password" type="password"
+           autocomplete="current-password">
+    <p class="field-hint">
+      拿到新救援碼等於取得長期的帳號恢復能力，所以要密碼確認。
+    </p>
+    {% endif %}
+    <button type="submit">產生新的救援碼</button>
+    <p class="field-hint">舊的救援碼會全部作廢，新的只會顯示一次。</p>
   </form>
 </section>
 {% endblock %}

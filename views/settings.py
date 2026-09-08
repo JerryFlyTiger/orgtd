@@ -17,9 +17,11 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 import orgfiles
+import recovery
 from db import SessionLocal
 from models import User
 from queries import get_settings, save_settings
+from views.auth import MIN_PASSWORD_LENGTH, render_recovery_codes
 from emails import normalize_email
 from security import hash_password, verify_password
 from views._scope import uid
@@ -45,6 +47,7 @@ def index():
             user=user,
             pomodoro=get_settings(session, user.id),
             has_password=bool(user.password_hash),
+            recovery_remaining=recovery.unused_count(session, user.id),
             org_files=[
                 {
                     "name": name,
@@ -179,8 +182,8 @@ def change_password():
         if not _password_ok(user, old):
             flash("目前密碼不正確。", "warn")
             return redirect(url_for("settings.index"))
-        if len(new) < 12:
-            flash("新密碼至少 12 個字元。", "warn")
+        if len(new) < MIN_PASSWORD_LENGTH:
+            flash(f"新密碼至少 {MIN_PASSWORD_LENGTH} 個字元。", "warn")
             return redirect(url_for("settings.index"))
         if new != confirm:
             flash("兩次輸入的新密碼不一致。", "warn")
@@ -224,3 +227,24 @@ def export_one(filename):
         as_attachment=True,
         download_name=filename,
     )
+
+
+@bp.post("/recovery-codes")
+@login_required
+def regenerate_recovery_codes():
+    """重新產生一批救援碼，舊的全部作廢。
+
+    要求輸入目前密碼：能拿到新救援碼等於取得長期的帳號恢復能力，
+    session 被竊時不該只憑「已登入」就發給對方。
+    """
+    with SessionLocal() as session:
+        user = session.get(User, uid())
+        if not _password_ok(user, request.form.get("current_password") or ""):
+            flash("目前密碼不正確。", "warn")
+            return redirect(url_for("settings.index"))
+
+        codes = recovery.issue(session, user.id)
+        display_name = user.display_name
+
+    # 跟註冊時一樣直接渲染，明碼不進 session；連同 no-store 標頭一起。
+    return render_recovery_codes(codes, display_name, first_time=False)

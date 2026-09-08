@@ -3,7 +3,7 @@
 GTD × org-mode 的時間與專案管理系統。多人帳號、網頁介面，資料可一鍵
 匯出成 **org-mode 純文字檔**，下載到自己電腦用 Emacs 或 VSCode 打開。
 
-Flask 3 · PostgreSQL 17 · SQLAlchemy 2.0 · Alembic · 66 個測試
+Flask 3 · PostgreSQL 17 · SQLAlchemy 2.0 · Alembic · 99 個測試
 
 ---
 
@@ -128,6 +128,50 @@ def fetch_agenda(session, user_id):   # 不是 user_id=None
 自製的 NFC 版本不會。於是那支「修正資料」的 migration 反而把帳號改成
 登不進去。一致性要由結構保證，不能靠人記得同步三個地方。
 
+### 忘記密碼：一次性救援碼
+
+註冊時會發 10 組一次性救援碼，只顯示那一次（資料庫只存雜湊）。忘記密碼時
+在登入頁點「忘記密碼」，輸入 email 加任一組碼就能直接重設。每組用一次，
+可以隨時到設定頁重新產生一批（舊的全部作廢）。
+
+**為什麼不做「寄重設連結到信箱」**：這個系統沒有寄信能力，自架環境要接
+SMTP 等於多一組要保管的憑證與一個會壞的外部相依。救援碼把恢復能力交還給
+使用者自己保管，不需要任何外部服務。
+
+幾個實作上的取捨：
+
+- **救援碼用 SHA-256，不用 argon2**。密碼要用慢雜湊，是因為人選的密碼熵
+  很低，必須讓每次猜測都昂貴；救援碼是程式產生的 124 位元隨機值，暴力
+  搜尋在物理上不可行。而且確定性雜湊可以直接用索引查到那一列，argon2
+  每次加鹽就得把使用者所有未使用的碼逐一驗過。
+- **刻意不做嘗試次數限制**，依據就是上面那個熵。有一支測試
+  （`test_codes_have_enough_entropy_to_skip_rate_limiting`）守著這個前提，
+  哪天有人把碼改短會先被擋下來。
+- **字母表排除 0/O/1/I/L**。這些碼是要用手抄或手打的，可讀性比字母表大小
+  重要——少 7 個字元只讓每字元少約 0.5 bit。輸入時大小寫、空白、連字號
+  都容忍。
+- **明碼絕不進 session**。註冊與重新產生都是直接渲染 POST 的回應，不轉址。
+  Flask 的 session cookie 只有簽章、沒有加密，內容是任何拿到 cookie 的人
+  都讀得出來的。
+- **重設時先驗新密碼、再消耗救援碼**。順序反過來的話，新密碼打太短就白白
+  燒掉一組碼。兩支測試釘著這個順序。
+- **消耗是單一敘述的原子操作**（`UPDATE ... WHERE used_at IS NULL ... RETURNING`），
+  不是「先 SELECT 出來、再把 used_at 寫回去」。後者在併發下守不住單次使用：
+  兩個請求的 SELECT 都會在對方 commit 之前讀到 `used_at IS NULL`，雙方都
+  判定成功。這不是理論上的窄窗——冷讀指出後實測 8 條併發打同一組碼，
+  **每一輪都有 6 到 8 條同時消耗成功**。有一支多執行緒的回歸測試守著。
+- **明碼頁回 `Cache-Control: no-store`**。這是全站唯一一個回應本文含長期
+  有效機密的頁面，否則公用電腦上按「上一頁」就能把碼叫回來。
+- **查無此帳號時也照樣跑一次驗證**。寫成
+  `user is None or not recovery.consume(...)` 的話，Python 的短路會讓
+  「查無此帳號」跳過雜湊與查詢，明顯比「帳號存在但碼錯」快——訊息藏好了，
+  卻從耗時洩漏出去。守著這條的測試斷言的是「`consume` 有沒有被呼叫」這個
+  結構性質，而不是量測時間：計時測試會偶發失敗，斷言結構不會。
+
+連救援碼都遺失時，還有終端機這條路：
+`manage.py recovery-codes <email>`。能跑這個指令代表你有這台機器的存取權，
+本來就等同擁有這個系統的一切。
+
 ### 為什麼沒有第三方登入
 
 Google、Apple、X 都評估過，結論是成本大於價值：
@@ -147,7 +191,8 @@ Google 那條唯一的障礙只是申請流程，但為了一個自架的個人�
 
 - 改顯示名稱
 - 改登入用的 email（需輸入目前密碼）
-- 改密碼
+- 改密碼（有即時的長度與一致性提示）
+- 重新產生救援碼（需輸入目前密碼）
 - 番茄鐘時長參數
 - 匯出 org 檔（見下）
 
@@ -280,14 +325,15 @@ ORGTD_DATABASE_URL="postgresql+psycopg://$(whoami)@localhost:5432/orgtd_test" \
   .venv/bin/python -m pytest tests/ -q
 ```
 
-66 個測試，分五組：
+99 個測試，分六組：
 
 | 檔案 | 守的是什麼 |
 |---|---|
 | `test_org_export.py` | 25 項。匯出的真的是 Emacs 讀得懂的 org 格式，且只含自己的資料 |
+| `test_recovery.py` | 33 項。救援碼與忘記密碼流程每一種「不該成功」的情況 |
 | `test_change_email.py` | 15 項。改 email 的每一種「不該成功」的情況 |
-| `test_tenant_isolation.py` | 11 項。B 使用者讀不到也改不到 A 的任何東西 |
 | `test_auth.py` | 13 項。註冊、登入、存取控制、email 正規化一致性 |
+| `test_tenant_isolation.py` | 11 項。B 使用者讀不到也改不到 A 的任何東西 |
 | `test_csrf.py` | 2 項。沒帶 token 的 POST 一律拒絕 |
 
 幾個是回歸測試，對應開發時真的踩到的坑：
@@ -315,6 +361,18 @@ ORGTD_DATABASE_URL="postgresql+psycopg://$(whoami)@localhost:5432/orgtd_test" \
   走完整的註冊→登出→登入。其餘登入測試全是純 ASCII，而純 ASCII 下
   `lookup_key()` 跟天真的 `.strip().lower()` 行為完全一樣，等於防線在
   使用者真正的入口沒被測到
+- `test_short_password_does_not_burn_the_code`——重設密碼時若先消耗救援碼
+  再驗密碼，新密碼打太短就白白燒掉一組
+- `test_settings_page_title_is_not_polluted`——同一個坑踩過兩次：用
+  `str.replace("{% endblock %}", ...)` 插入區塊時沒限制次數，而模板有兩個
+  `endblock`，整段 HTML 被插進 `<title>` 裡
+- `test_concurrent_use_of_one_code_only_succeeds_once`——8 條執行緒同時打
+  同一組救援碼，只有一條能成功
+- `test_backslash_in_display_name_does_not_break_the_page`——Jinja 的自動
+  跳脫是給 HTML 用的、不處理反斜線，顯示名稱以 `\` 結尾就會把 JS 字串的
+  收尾引號跳脫掉，整段 script SyntaxError、按鈕靜默失效
+- `test_settings_password_change_uses_the_shared_minimum`——密碼長度下限
+  若在前端與各個後端路徑各自硬編碼，調高時前端會承諾一件後端沒在擋的事
 
 ---
 
@@ -347,6 +405,7 @@ launchctl load ~/Library/LaunchAgents/com.orgtd.notifier.plist
 .venv/bin/python manage.py list-users
 .venv/bin/python manage.py create-user <email> [顯示名稱]
 .venv/bin/python manage.py set-password <email>
+.venv/bin/python manage.py recovery-codes <email>
 .venv/bin/python manage.py export <email> <目標資料夾>
 ```
 
@@ -375,14 +434,15 @@ db.py             engine / session / Base
 models.py         SQLAlchemy 模型與索引定義
 queries.py        跨 view 共用的進階查詢（全部強制帶 user_id）
 security.py       argon2 密碼雜湊、Flask-Login 設定
+recovery.py       一次性救援碼的產生與驗證
 emails.py         email 驗證與正規化（全站唯一來源，不相依框架）
 orgfiles.py       org 純文字匯出（單向，記憶體內完成）
 manage.py         管理指令列
 views/            9 個功能 blueprint + auth + settings + _scope 取用輔助
 templates/        Jinja2 模板
-static/           CSS 與兩支 JS（番茄鐘計時、提醒輪詢）
+static/           CSS 與三支 JS（番茄鐘計時、提醒輪詢、密碼提示）
 migrations/       Alembic 遷移
-tests/            66 個測試
+tests/            99 個測試
 launchd/          提醒排程的 plist
 gui/              macOS 雙擊啟動的 AppleScript
 ```

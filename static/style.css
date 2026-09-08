@@ -862,3 +862,52 @@ main h2 {
 
 .warn-text { color: var(--warn-fg); }
 .muted { color: var(--text-muted); font-size: 0.9rem; line-height: 1.6; }
+
+/* --- 密碼即時提示與救援碼 --- */
+
+.password-hint {
+  margin: 0.3rem 0 0;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+
+.password-hint-warn { color: var(--warn-fg); }
+.password-hint-ok   { color: var(--ok-fg); }
+
+.recovery-card {
+  max-width: 560px;
+  margin: 2rem auto;
+}
+
+.recovery-list {
+  margin: 1.25rem 0;
+  padding-left: 2rem;
+  columns: 2;
+  column-gap: 2rem;
+}
+
+.recovery-list li {
+  margin-bottom: 0.5rem;
+  color: var(--text-muted);
+}
+
+.recovery-list code {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.95rem;
+  letter-spacing: 0.04em;
+  color: var(--text);
+  /* 手抄時 0/O、1/l 最容易看錯，等寬字型能讓字形差異明顯一些。 */
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+@media (max-width: 560px) {
+  .recovery-list { columns: 1; }
+}
+
+button.button-link {
+  font-family: inherit;
+  cursor: pointer;
+}

@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}救援碼 — orgtd{% endblock %}
+{% block content %}
+<div class="card recovery-card">
+  <h1>{% if first_time %}帳號建立完成{% else %}新的救援碼{% endif %}</h1>
+
+  <div class="flash flash-warn">
+    <strong>這些碼只會顯示這一次。</strong>
+    離開這個頁面之後就再也看不到了——資料庫裡只存雜湊，我們也還原不出來。
+    {% if not first_time %}舊的救援碼已全部作廢。{% endif %}
+  </div>
+
+  <p class="muted">
+    忘記密碼時，在登入頁點「忘記密碼」，用其中任一組重設。
+    <strong>每組只能用一次</strong>，用完可以到設定頁重新產生一批。
+  </p>
+
+  <ol class="recovery-list" id="recovery-list">
+    {% for code in codes %}<li><code>{{ code }}</code></li>{% endfor %}
+  </ol>
+
+  <div class="button-row">
+    <button type="button" class="button-link" id="download-codes">下載成文字檔</button>
+    <button type="button" class="button-link" id="copy-codes">複製全部</button>
+    <a class="button-link" href="{{ url_for('settings.index') }}">我已經存好了</a>
+  </div>
+  <p class="field-hint" id="copy-feedback" hidden></p>
+</div>
+
+<script id="download-payload" type="application/json">{{ download_text | tojson }}</script>
+<script>
+(function () {
+  // 下載內容由伺服器產生（recovery.format_for_download），前端只負責存檔。
+  //
+  // 早先是在 JS 字串裡直接插 "帳號：{{ display_name }}"。那是錯的：Jinja 的
+  // 自動跳脫是給 HTML 用的，不會處理反斜線，顯示名稱只要以 \ 結尾就會把
+  // 收尾引號跳脫掉，整段 script 變成 SyntaxError，兩個按鈕靜默失效。
+  // 而且那份文案跟 CLI 版本是兩份獨立實作，改一邊很容易漏改另一邊。
+  var text = JSON.parse(document.getElementById("download-payload").textContent);
+
+  document.getElementById("download-codes").addEventListener("click", function () {
+    var blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "orgtd-recovery-codes.txt";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
+  });
+
+  var feedback = document.getElementById("copy-feedback");
+  document.getElementById("copy-codes").addEventListener("click", function () {
+    // navigator.clipboard 只在安全上下文（https 或 localhost）可用，
+    // 走區網 IP 連進來時會是 undefined，所以要有退路。
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () {
+        feedback.textContent = "已複製到剪貼簿。";
+        feedback.hidden = false;
+      }, function () {
+        feedback.textContent = "無法自動複製，請手動選取上面的代碼。";
+        feedback.hidden = false;
+      });
+    } else {
+      feedback.textContent = "這個連線方式不支援自動複製，請手動選取。";
+      feedback.hidden = false;
+    }
+  });
+})();
+</script>
+{% endblock %}

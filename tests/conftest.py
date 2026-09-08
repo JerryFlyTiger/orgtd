@@ -53,7 +53,7 @@ def clean_db():
 
 @pytest.fixture
 def make_user():
-    def _make(email, name=None):
+    def _make(email, name=None, active=True):
         # 跟生產寫入路徑（_create_user / change_email）走同一套正規化，
         # 否則測試裡寫 make_user("Mixed@Example.com") 會因大小寫查不到人，
         # 讓人誤以為是產品程式碼壞掉。
@@ -64,6 +64,7 @@ def make_user():
                 email=normalized,
                 display_name=name or email.split("@")[0],
                 password_hash=hash_password(PASSWORD),
+                is_active=active,
             )
             session.add(user)
             session.commit()
